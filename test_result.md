@@ -254,3 +254,65 @@ test_plan:
 agent_communication:
   - agent: "main"
     message: "MVP completed with all features working. Backend APIs tested with curl. Frontend verified via screenshots. All 4 tabs working correctly with emoji-based mood selection, calendar view, trends graph, and data export."
+  - agent: "main"
+    message: "New features implemented: Voice notes with AI transcription, Notes library with search/filter, AI-powered note analysis with keyword extraction, Smart reminder suggestions, Daily/Weekly AI summaries. Need backend testing for all new /api/notes/* endpoints."
+
+  - task: "Notes API - POST /api/notes with voice transcription"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Newly implemented - creates notes with text/voice/image, AI analysis, smart reminder suggestions"
+
+  - task: "Notes Library API - GET /api/notes/library"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Newly implemented - fetches notes with period filter, tags, and organization"
+
+  - task: "Daily Summary API - GET /api/daily-summary"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Newly implemented - generates AI daily summary of moods and notes"
+
+  - task: "Weekly Summary API - GET /api/weekly-summary"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Newly implemented - generates AI weekly summary with mood correlation"
+
+  - task: "Pending Reminders API - GET /api/notes/reminders/pending"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Newly implemented - fetches notes with pending reminders"
