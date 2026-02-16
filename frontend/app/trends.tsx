@@ -367,8 +367,8 @@ export default function TrendsScreen() {
 
     return (
       <View style={styles.analysisCard}>
-        <Text style={styles.cardTitle}>Layer Analysis</Text>
-        <Text style={styles.cardSubtitle}>Detailed breakdown by mood dimension</Text>
+        <Text style={styles.cardTitle}>Analiza Warstw</Text>
+        <Text style={styles.cardSubtitle}>Szczegółowy podział wg wymiaru nastroju</Text>
 
         {Object.entries(analytics.average_layers).map(([key, value]) => {
           const timeData = ['morning', 'midday', 'evening'].map(time => ({
