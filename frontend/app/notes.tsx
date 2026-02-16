@@ -96,79 +96,20 @@ export default function NotesScreen() {
     fetchNotes();
   }, [libraryPeriod, selectedTag, searchQuery]);
 
-  const registerForPushNotifications = async () => {
-    if (!Device.isDevice) {
-      return;
-    }
-    
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-    
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-    
-    if (finalStatus !== 'granted') {
-      console.log('Push notification permission not granted');
-    }
-  };
+  // Notifications are handled on the backend
+  // In production builds, you would add expo-notifications here
 
-  const scheduleReminderNotification = async (note: Note) => {
-    if (!note.reminder_date) return;
-    
-    const reminderDate = new Date(note.reminder_date);
-    reminderDate.setHours(9, 0, 0, 0); // Set to 9 AM
-    
-    if (reminderDate <= new Date()) {
-      // Send immediate notification for past reminders
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: `📝 Reminder: ${note.title || 'Note'}`,
-          body: note.ai_summary || note.text_content?.slice(0, 100) || 'You have a reminder',
-          data: { noteId: note.id },
-        },
-        trigger: null,
-      });
-    } else {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: `📝 Reminder: ${note.title || 'Note'}`,
-          body: note.ai_summary || note.text_content?.slice(0, 100) || 'You have a reminder',
-          data: { noteId: note.id },
-        },
-        trigger: { date: reminderDate },
-      });
+  const checkPendingReminders = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/notes/reminders/pending`);
+      if (response.ok) {
+        const pendingNotes = await response.json();
+        // In production, schedule notifications here
+        console.log('Pending reminders:', pendingNotes.length);
+      }
+    } catch (error) {
+      console.error('Error checking reminders:', error);
     }
-  };
-
-  const scheduleDailySummaryNotification = async () => {
-    const trigger = new Date();
-    trigger.setHours(21, 0, 0, 0); // 9 PM
-    if (trigger <= new Date()) {
-      trigger.setDate(trigger.getDate() + 1);
-    }
-    
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: '📊 Daily Summary Ready',
-        body: 'Tap to view your mood and notes summary for today',
-        data: { type: 'daily_summary' },
-      },
-      trigger: { date: trigger, repeats: true },
-    });
-  };
-
-  const scheduleWeeklySummaryNotification = async () => {
-    // Schedule for Sunday 9 PM
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: '📊 Weekly Summary Ready',
-        body: 'Tap to view your weekly mood trends and notes',
-        data: { type: 'weekly_summary' },
-      },
-      trigger: { weekday: 1, hour: 9, minute: 0, repeats: true },
-    });
   };
 
   const openNoteFromNotification = async (noteId: string) => {
