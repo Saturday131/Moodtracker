@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,9 +9,8 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
 import { BarChart } from 'react-native-gifted-charts';
-import { format, subDays, subMonths } from 'date-fns';
+import { format, subDays } from 'date-fns';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -65,7 +64,7 @@ export default function TrendsScreen() {
     }
   };
 
-  const fetchData = useCallback(async () => {
+  const fetchData = async () => {
     try {
       setLoading(true);
       const days = getDaysForRange(timeRange);
@@ -91,13 +90,11 @@ export default function TrendsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [timeRange]);
+  };
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchData();
-    }, [fetchData])
-  );
+  useEffect(() => {
+    fetchData();
+  }, [timeRange]);
 
   const getChartData = () => {
     if (!moods.length) return [];

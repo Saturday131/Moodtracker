@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,6 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { format, subDays, subMonths } from 'date-fns';
 import * as Clipboard from 'expo-clipboard';
@@ -42,7 +41,7 @@ export default function ExportScreen() {
   const [exporting, setExporting] = useState(false);
   const [selectedRange, setSelectedRange] = useState<ExportRange>('all');
 
-  const fetchStats = useCallback(async () => {
+  const fetchStats = async () => {
     try {
       setLoading(true);
       const response = await fetch(`${API_URL}/api/moods`);
@@ -55,13 +54,11 @@ export default function ExportScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchStats();
-    }, [fetchStats])
-  );
+  useEffect(() => {
+    fetchStats();
+  }, []);
 
   const getDateRange = (range: ExportRange): { start?: string; end: string } => {
     const end = format(new Date(), 'yyyy-MM-dd');

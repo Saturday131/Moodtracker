@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,6 @@ import {
   Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
 import { format } from 'date-fns';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
@@ -44,7 +43,7 @@ export default function TodayScreen() {
   const today = format(new Date(), 'yyyy-MM-dd');
   const displayDate = format(new Date(), 'EEEE, MMMM d, yyyy');
 
-  const fetchTodayMood = useCallback(async () => {
+  const fetchTodayMood = async () => {
     try {
       setFetchingToday(true);
       const response = await fetch(`${API_URL}/api/moods/date/${today}`);
@@ -62,13 +61,11 @@ export default function TodayScreen() {
     } finally {
       setFetchingToday(false);
     }
-  }, [today]);
+  };
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchTodayMood();
-    }, [fetchTodayMood])
-  );
+  useEffect(() => {
+    fetchTodayMood();
+  }, [today]);
 
   const saveMood = async () => {
     if (!selectedMood) {

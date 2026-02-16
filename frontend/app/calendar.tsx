@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,6 @@ import {
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   format,
@@ -20,7 +19,6 @@ import {
   isSameDay,
   addMonths,
   subMonths,
-  getDay,
   startOfWeek,
   endOfWeek,
 } from 'date-fns';
@@ -53,7 +51,7 @@ export default function CalendarScreen() {
   const [selectedMood, setSelectedMood] = useState<MoodEntry | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
-  const fetchMoods = useCallback(async () => {
+  const fetchMoods = async () => {
     try {
       setLoading(true);
       const start = format(startOfMonth(currentMonth), 'yyyy-MM-dd');
@@ -72,13 +70,11 @@ export default function CalendarScreen() {
     } finally {
       setLoading(false);
     }
-  }, [currentMonth]);
+  };
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchMoods();
-    }, [fetchMoods])
-  );
+  useEffect(() => {
+    fetchMoods();
+  }, [currentMonth]);
 
   const getMoodForDate = (date: Date): MoodEntry | undefined => {
     const dateStr = format(date, 'yyyy-MM-dd');
