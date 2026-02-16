@@ -277,7 +277,7 @@ export default function TrendsScreen() {
               <Text style={[styles.timeScore, { color: getScoreColor(timeData[time]?.composite || 0) }]}>
                 {(timeData[time]?.composite || 0).toFixed(1)}
               </Text>
-              <Text style={styles.timeCount}>{timeData[time]?.count || 0} entries</Text>
+              <Text style={styles.timeCount}>{timeData[time]?.count || 0} wpisów</Text>
             </View>
           ))}
         </View>
