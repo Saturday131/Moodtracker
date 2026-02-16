@@ -37,8 +37,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Today',
-          headerTitle: 'Mood Tracker',
+          title: 'Dziś',
+          headerTitle: 'Dziennik Nastroju',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="happy" size={size} color={color} />
           ),
@@ -47,8 +47,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="calendar"
         options={{
-          title: 'Calendar',
-          headerTitle: 'Mood Calendar',
+          title: 'Kalendarz',
+          headerTitle: 'Kalendarz Nastroju',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="calendar" size={size} color={color} />
           ),
@@ -57,8 +57,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="trends"
         options={{
-          title: 'Trends',
-          headerTitle: 'Mood Trends',
+          title: 'Trendy',
+          headerTitle: 'Trendy Nastroju',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="analytics" size={size} color={color} />
           ),
@@ -67,8 +67,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="notes"
         options={{
-          title: 'Notes',
-          headerTitle: 'My Notes',
+          title: 'Notatki',
+          headerTitle: 'Moje Notatki',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="document-text" size={size} color={color} />
           ),
@@ -77,8 +77,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="chat"
         options={{
-          title: 'Chat',
-          headerTitle: 'MoodBuddy',
+          title: 'Czat',
+          headerTitle: 'Asystent Nastroju',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="chatbubbles" size={size} color={color} />
           ),
@@ -87,7 +87,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="export"
         options={{
-          href: null, // Hide from tab bar but keep accessible
+          href: null,
         }}
       />
     </Tabs>

@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
+import { pl } from 'date-fns/locale';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -35,20 +36,20 @@ interface MoodEntry {
 }
 
 const TIME_OPTIONS = [
-  { key: 'morning', label: 'Morning', icon: 'sunny', emoji: '🌅' },
-  { key: 'midday', label: 'Midday', icon: 'sunny', emoji: '☀️' },
-  { key: 'evening', label: 'Evening', icon: 'moon', emoji: '🌙' },
+  { key: 'morning', label: 'Rano', icon: 'sunny', emoji: '🌅' },
+  { key: 'midday', label: 'Południe', icon: 'sunny', emoji: '☀️' },
+  { key: 'evening', label: 'Wieczór', icon: 'moon', emoji: '🌙' },
 ];
 
 const MOOD_LAYERS = [
-  { key: 'overall', label: 'Overall Mood', emoji: '😊', color: '#6366F1' },
-  { key: 'energy', label: 'Energy Level', emoji: '⚡', color: '#F59E0B' },
-  { key: 'stress', label: 'Calm Level', emoji: '🧘', color: '#10B981' },
-  { key: 'productivity', label: 'Productivity', emoji: '💪', color: '#EC4899' },
-  { key: 'social', label: 'Social Mood', emoji: '👥', color: '#8B5CF6' },
+  { key: 'overall', label: 'Ogólny Nastrój', emoji: '😊', color: '#6366F1' },
+  { key: 'energy', label: 'Poziom Energii', emoji: '⚡', color: '#F59E0B' },
+  { key: 'stress', label: 'Poziom Spokoju', emoji: '🧘', color: '#10B981' },
+  { key: 'productivity', label: 'Produktywność', emoji: '💪', color: '#EC4899' },
+  { key: 'social', label: 'Nastrój Społeczny', emoji: '👥', color: '#8B5CF6' },
 ];
 
-const SCORE_LABELS = ['Very Low', 'Low', 'Okay', 'Good', 'Great'];
+const SCORE_LABELS = ['Bardzo Niski', 'Niski', 'Średni', 'Dobry', 'Świetny'];
 const SCORE_COLORS = ['#EF4444', '#F97316', '#EAB308', '#84CC16', '#22C55E'];
 
 export default function TodayScreen() {
@@ -66,9 +67,8 @@ export default function TodayScreen() {
   const [existingMoods, setExistingMoods] = useState<Record<string, MoodEntry | null>>({});
 
   const today = format(new Date(), 'yyyy-MM-dd');
-  const displayDate = format(new Date(), 'EEEE, MMMM d, yyyy');
+  const displayDate = format(new Date(), 'EEEE, d MMMM yyyy', { locale: pl });
 
-  // Determine current time of day
   useEffect(() => {
     const hour = new Date().getHours();
     if (hour < 12) setSelectedTime('morning');
@@ -84,7 +84,6 @@ export default function TodayScreen() {
         const data = await response.json();
         setExistingMoods(data);
         
-        // Load current time's mood if exists
         if (data[selectedTime]) {
           setLayers(data[selectedTime].layers);
           setNote(data[selectedTime].note || '');
@@ -102,12 +101,10 @@ export default function TodayScreen() {
   }, [today]);
 
   useEffect(() => {
-    // When switching time of day, load that time's mood
     if (existingMoods[selectedTime]) {
       setLayers(existingMoods[selectedTime]!.layers);
       setNote(existingMoods[selectedTime]!.note || '');
     } else {
-      // Reset to defaults if no mood exists
       setLayers({ overall: 3, energy: 3, stress: 3, productivity: 3, social: 3 });
       setNote('');
     }
@@ -137,13 +134,13 @@ export default function TodayScreen() {
         const data = await response.json();
         setExistingMoods(prev => ({ ...prev, [selectedTime]: data }));
         const timeLabel = TIME_OPTIONS.find(t => t.key === selectedTime)?.label;
-        Alert.alert('Saved!', `Your ${timeLabel?.toLowerCase()} mood has been recorded!`);
+        Alert.alert('Zapisano!', `Twój nastrój ${timeLabel?.toLowerCase()} został zapisany!`);
       } else {
-        Alert.alert('Error', 'Failed to save mood. Please try again.');
+        Alert.alert('Błąd', 'Nie udało się zapisać nastroju. Spróbuj ponownie.');
       }
     } catch (error) {
       console.error('Error saving mood:', error);
-      Alert.alert('Error', 'Failed to save mood. Please check your connection.');
+      Alert.alert('Błąd', 'Nie udało się zapisać nastroju. Sprawdź połączenie.');
     } finally {
       setLoading(false);
     }
@@ -162,7 +159,7 @@ export default function TodayScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#6366F1" />
-        <Text style={styles.loadingText}>Loading...</Text>
+        <Text style={styles.loadingText}>Ładowanie...</Text>
       </View>
     );
   }
@@ -184,7 +181,7 @@ export default function TodayScreen() {
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.dateText}>{displayDate}</Text>
-            <Text style={styles.title}>How are you feeling?</Text>
+            <Text style={styles.title}>Jak się czujesz?</Text>
           </View>
 
           {/* Time of Day Selector */}
@@ -219,7 +216,7 @@ export default function TodayScreen() {
 
           {/* Composite Score */}
           <View style={styles.compositeCard}>
-            <Text style={styles.compositeLabel}>Composite Score</Text>
+            <Text style={styles.compositeLabel}>Wynik Łączny</Text>
             <Text style={[styles.compositeValue, { color: SCORE_COLORS[Math.round(composite) - 1] || '#6B7280' }]}>
               {composite.toFixed(1)} / 5.0
             </Text>
@@ -260,8 +257,8 @@ export default function TodayScreen() {
                   ))}
                 </View>
                 <View style={styles.scoreLabelsRow}>
-                  <Text style={styles.scoreLabelLeft}>{layer.key === 'stress' ? 'Stressed' : 'Low'}</Text>
-                  <Text style={styles.scoreLabelRight}>{layer.key === 'stress' ? 'Calm' : 'Great'}</Text>
+                  <Text style={styles.scoreLabelLeft}>{layer.key === 'stress' ? 'Zestresowany' : 'Niski'}</Text>
+                  <Text style={styles.scoreLabelRight}>{layer.key === 'stress' ? 'Spokojny' : 'Świetny'}</Text>
                 </View>
               </View>
             ))}
@@ -269,10 +266,10 @@ export default function TodayScreen() {
 
           {/* Note Input */}
           <View style={styles.noteContainer}>
-            <Text style={styles.noteLabel}>Add a note (optional)</Text>
+            <Text style={styles.noteLabel}>Dodaj notatkę (opcjonalnie)</Text>
             <TextInput
               style={styles.noteInput}
-              placeholder="What's happening?"
+              placeholder="Co się dzieje?"
               placeholderTextColor="#6B7280"
               value={note}
               onChangeText={setNote}
@@ -292,14 +289,14 @@ export default function TodayScreen() {
               <ActivityIndicator color="#FFFFFF" />
             ) : (
               <Text style={styles.saveButtonText}>
-                {hasExisting ? 'Update Mood' : 'Save Mood'}
+                {hasExisting ? 'Aktualizuj Nastrój' : 'Zapisz Nastrój'}
               </Text>
             )}
           </TouchableOpacity>
 
           {/* Today's Progress */}
           <View style={styles.progressCard}>
-            <Text style={styles.progressTitle}>Today's Check-ins</Text>
+            <Text style={styles.progressTitle}>Dzisiejsze Wpisy</Text>
             <View style={styles.progressRow}>
               {TIME_OPTIONS.map((time) => {
                 const hasMood = !!existingMoods[time.key];
