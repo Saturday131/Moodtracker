@@ -203,7 +203,7 @@ export default function TrendsScreen() {
 
         {/* Layer Averages */}
         <View style={styles.layersCard}>
-          <Text style={styles.cardTitle}>Layer Averages</Text>
+          <Text style={styles.cardTitle}>Średnie Warstw</Text>
           {Object.entries(analytics.average_layers).map(([key, value]) => (
             <View key={key} style={styles.layerRow}>
               <Text style={styles.layerEmoji}>{LAYER_EMOJIS[key as keyof typeof LAYER_EMOJIS]}</Text>
