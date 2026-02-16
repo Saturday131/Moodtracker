@@ -81,34 +81,11 @@ export default function NotesScreen() {
   const [saving, setSaving] = useState(false);
   const [playingSound, setPlayingSound] = useState<Audio.Sound | null>(null);
 
-  // Notifications
-  const notificationListener = useRef<any>();
-  const responseListener = useRef<any>();
-
   useEffect(() => {
-    registerForPushNotifications();
     fetchNotes();
     checkPendingReminders();
 
-    // Set up notification listeners
-    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-      console.log('Notification received:', notification);
-    });
-
-    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-      const noteId = response.notification.request.content.data?.noteId;
-      if (noteId) {
-        openNoteFromNotification(noteId);
-      }
-    });
-
     return () => {
-      if (notificationListener.current) {
-        Notifications.removeNotificationSubscription(notificationListener.current);
-      }
-      if (responseListener.current) {
-        Notifications.removeNotificationSubscription(responseListener.current);
-      }
       if (playingSound) {
         playingSound.unloadAsync();
       }
