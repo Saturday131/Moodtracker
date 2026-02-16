@@ -1,0 +1,75 @@
+import React from 'react';
+import { Tabs } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { View, StyleSheet, Platform } from 'react-native';
+
+export default function TabLayout() {
+  return (
+    <Tabs
+      screenOptions={{
+        tabBarActiveTintColor: '#6366F1',
+        tabBarInactiveTintColor: '#9CA3AF',
+        tabBarStyle: {
+          backgroundColor: '#1F2937',
+          borderTopColor: '#374151',
+          borderTopWidth: 1,
+          height: Platform.OS === 'ios' ? 85 : 65,
+          paddingBottom: Platform.OS === 'ios' ? 25 : 10,
+          paddingTop: 10,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '600',
+        },
+        headerStyle: {
+          backgroundColor: '#111827',
+        },
+        headerTintColor: '#FFFFFF',
+        headerTitleStyle: {
+          fontWeight: 'bold',
+        },
+      }}
+    >
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Today',
+          headerTitle: 'Mood Tracker',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="happy" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="calendar"
+        options={{
+          title: 'Calendar',
+          headerTitle: 'Mood Calendar',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="calendar" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="trends"
+        options={{
+          title: 'Trends',
+          headerTitle: 'Mood Trends',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="analytics" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="export"
+        options={{
+          title: 'Export',
+          headerTitle: 'Export Data',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="download" size={size} color={color} />
+          ),
+        }}
+      />
+    </Tabs>
+  );
+}
