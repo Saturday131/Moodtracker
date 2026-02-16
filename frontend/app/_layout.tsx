@@ -83,11 +83,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="export"
         options={{
-          title: 'Export',
-          headerTitle: 'Export Data',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="download" size={size} color={color} />
-          ),
+          href: null, // Hide from tab bar but keep accessible
         }}
       />
     </Tabs>
