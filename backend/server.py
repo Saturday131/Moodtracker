@@ -10,6 +10,7 @@ from typing import List, Optional, Dict
 import uuid
 from datetime import datetime, timedelta
 from collections import defaultdict
+from emergentintegrations.llm.chat import LlmChat, UserMessage
 
 
 ROOT_DIR = Path(__file__).parent
@@ -19,6 +20,9 @@ load_dotenv(ROOT_DIR / '.env')
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+
+# LLM Key
+EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
 
 # Create the main app without a prefix
 app = FastAPI()
@@ -66,6 +70,20 @@ class MoodEntryUpdate(BaseModel):
     layers: Optional[MoodLayers] = None
     note: Optional[str] = None
 
+class ChatMessage(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    role: str  # user or assistant
+    content: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+class ChatRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+
+class ChatResponse(BaseModel):
+    message: str
+    session_id: str
+
 # Helper functions
 def calculate_composite_score(layers: dict) -> float:
     """Calculate weighted composite score from all layers"""
@@ -77,10 +95,126 @@ def get_day_of_week(date_str: str) -> int:
     """Get day of week (0=Monday, 6=Sunday)"""
     return datetime.strptime(date_str, "%Y-%m-%d").weekday()
 
+async def get_mood_context(days: int = 7) -> str:
+    """Get mood data context for the chatbot"""
+    end_date = datetime.utcnow().date()
+    start_date = end_date - timedelta(days=days)
+    
+    query = {
+        "date": {
+            "$gte": start_date.isoformat(),
+            "$lte": end_date.isoformat()
+        }
+    }
+    
+    moods = await db.moods.find(query).sort([("date", -1), ("time_of_day", 1)]).to_list(100)
+    
+    if not moods:
+        return "No mood data recorded in the past week."
+    
+    # Build context string
+    context_parts = [f"Mood data for the past {days} days:"]
+    
+    # Group by date
+    by_date = defaultdict(list)
+    for mood in moods:
+        by_date[mood["date"]].append(mood)
+    
+    # Calculate overall stats
+    all_composites = []
+    layer_totals = {k: [] for k in MOOD_LAYERS.keys()}
+    time_composites = {t: [] for t in TIME_OF_DAY_OPTIONS}
+    day_composites = {i: [] for i in range(7)}
+    
+    for date_str, day_moods in sorted(by_date.items(), reverse=True):
+        day_name = DAY_NAMES[get_day_of_week(date_str)]
+        context_parts.append(f"\n{date_str} ({day_name}):")
+        
+        for mood in day_moods:
+            layers = mood.get("layers", {})
+            composite = calculate_composite_score(layers)
+            all_composites.append(composite)
+            time_composites[mood["time_of_day"]].append(composite)
+            day_composites[get_day_of_week(date_str)].append(composite)
+            
+            for k in MOOD_LAYERS.keys():
+                layer_totals[k].append(layers.get(k, 3))
+            
+            time_label = mood["time_of_day"].capitalize()
+            note_text = f" - Note: {mood.get('note')}" if mood.get('note') else ""
+            context_parts.append(
+                f"  {time_label}: Overall={layers.get('overall', 3)}, Energy={layers.get('energy', 3)}, "
+                f"Stress={layers.get('stress', 3)}, Productivity={layers.get('productivity', 3)}, "
+                f"Social={layers.get('social', 3)} (Composite: {composite:.1f}){note_text}"
+            )
+    
+    # Summary statistics
+    if all_composites:
+        avg_composite = sum(all_composites) / len(all_composites)
+        context_parts.append(f"\n\nSUMMARY STATISTICS:")
+        context_parts.append(f"- Total entries: {len(moods)}")
+        context_parts.append(f"- Days with data: {len(by_date)}")
+        context_parts.append(f"- Average composite score: {avg_composite:.2f}/5.0")
+        
+        # Layer averages
+        context_parts.append("\nLayer Averages:")
+        for k, values in layer_totals.items():
+            if values:
+                avg = sum(values) / len(values)
+                context_parts.append(f"  - {k.capitalize()}: {avg:.2f}")
+        
+        # Time of day patterns
+        context_parts.append("\nBy Time of Day:")
+        for t in TIME_OF_DAY_OPTIONS:
+            if time_composites[t]:
+                avg = sum(time_composites[t]) / len(time_composites[t])
+                context_parts.append(f"  - {t.capitalize()}: {avg:.2f} avg ({len(time_composites[t])} entries)")
+        
+        # Day of week patterns
+        context_parts.append("\nBy Day of Week:")
+        for i, values in day_composites.items():
+            if values:
+                avg = sum(values) / len(values)
+                context_parts.append(f"  - {DAY_NAMES[i]}: {avg:.2f} avg ({len(values)} entries)")
+    
+    return "\n".join(context_parts)
+
+async def generate_weekly_summary() -> str:
+    """Generate a weekly summary for notifications"""
+    context = await get_mood_context(days=7)
+    
+    if "No mood data" in context:
+        return "📊 Weekly Mood Summary\n\nNo mood data recorded this week. Start tracking your mood to get personalized insights!"
+    
+    # Use LLM to generate summary
+    if not EMERGENT_LLM_KEY:
+        return "📊 Weekly Summary\n\n" + context
+    
+    try:
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"weekly-summary-{datetime.utcnow().isoformat()}",
+            system_message="""You are a compassionate mood analysis assistant. Generate a brief, encouraging weekly mood summary.
+Include:
+1. Overall mood trend (improving, stable, needs attention)
+2. Best and challenging times/days
+3. One specific, actionable suggestion
+Keep it under 150 words, warm and supportive tone. Use emojis sparingly."""
+        ).with_model("openai", "gpt-4o")
+        
+        response = await chat.send_message(UserMessage(
+            text=f"Generate a weekly mood summary based on this data:\n\n{context}"
+        ))
+        
+        return f"📊 Weekly Mood Summary\n\n{response}"
+    except Exception as e:
+        logging.error(f"Error generating weekly summary: {e}")
+        return "📊 Weekly Summary\n\n" + context
+
 # Routes
 @api_router.get("/")
 async def root():
-    return {"message": "Mood Tracker API v2.0"}
+    return {"message": "Mood Tracker API v2.0 with AI Chat"}
 
 @api_router.get("/mood-layers")
 async def get_mood_layers():
@@ -143,7 +277,8 @@ async def get_moods_by_date(date_str: str):
     moods = await db.moods.find({"date": date_str}).sort("time_of_day", 1).to_list(3)
     result = {tod: None for tod in TIME_OF_DAY_OPTIONS}
     for mood in moods:
-        result[mood["time_of_day"]] = MoodEntry(**mood)
+        if "time_of_day" in mood and "layers" in mood:
+            result[mood["time_of_day"]] = MoodEntry(**mood)
     return result
 
 @api_router.get("/moods/date/{date_str}/time/{time_of_day}", response_model=Optional[MoodEntry])
@@ -153,7 +288,7 @@ async def get_mood_by_date_and_time(date_str: str, time_of_day: str):
         raise HTTPException(status_code=400, detail=f"time_of_day must be one of {TIME_OF_DAY_OPTIONS}")
     
     mood = await db.moods.find_one({"date": date_str, "time_of_day": time_of_day})
-    if mood:
+    if mood and "layers" in mood:
         return MoodEntry(**mood)
     return None
 
@@ -175,10 +310,11 @@ async def export_moods(start_date: Optional[str] = None, end_date: Optional[str]
         query["date"] = {"$lte": end_date}
     
     moods = await db.moods.find(query).sort([("date", -1), ("time_of_day", 1)]).to_list(1000)
+    valid_moods = [m for m in moods if "time_of_day" in m and "layers" in m]
     export_data = {
         "export_date": datetime.utcnow().isoformat(),
-        "total_entries": len(moods),
-        "moods": [MoodEntry(**mood).dict() for mood in moods]
+        "total_entries": len(valid_moods),
+        "moods": [MoodEntry(**mood).dict() for mood in valid_moods]
     }
     return export_data
 
@@ -196,6 +332,8 @@ async def get_analytics_summary(days: int = 30):
     }
     
     moods = await db.moods.find(query).to_list(1000)
+    # Filter valid moods
+    moods = [m for m in moods if "time_of_day" in m and "layers" in m]
     
     if not moods:
         return {
@@ -285,6 +423,7 @@ async def get_trends(days: int = 30, layer: Optional[str] = None, time_of_day: O
         query["time_of_day"] = time_of_day
     
     moods = await db.moods.find(query).sort([("date", 1), ("time_of_day", 1)]).to_list(1000)
+    moods = [m for m in moods if "time_of_day" in m and "layers" in m]
     
     # Group by date
     daily_data = defaultdict(list)
@@ -345,6 +484,7 @@ async def compare_periods(current_days: int = 7):
             "$lte": end_date.isoformat()
         }
     }).to_list(1000)
+    current_moods = [m for m in current_moods if "time_of_day" in m and "layers" in m]
     
     # Previous period
     previous_moods = await db.moods.find({
@@ -353,6 +493,7 @@ async def compare_periods(current_days: int = 7):
             "$lt": current_start.isoformat()
         }
     }).to_list(1000)
+    previous_moods = [m for m in previous_moods if "time_of_day" in m and "layers" in m]
     
     def calculate_period_stats(moods):
         if not moods:
@@ -391,6 +532,108 @@ async def compare_periods(current_days: int = 7):
         "previous": previous_stats,
         "changes": changes
     }
+
+# Chat endpoints
+@api_router.post("/chat", response_model=ChatResponse)
+async def chat_with_mood_assistant(request: ChatRequest):
+    """Chat with the AI mood assistant"""
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(status_code=500, detail="AI chat not configured")
+    
+    session_id = request.session_id or str(uuid.uuid4())
+    
+    # Get mood context
+    mood_context = await get_mood_context(days=14)
+    
+    system_message = f"""You are a compassionate and insightful mood tracking assistant called MoodBuddy. You help users understand their mood patterns and provide supportive guidance.
+
+CURRENT USER'S MOOD DATA:
+{mood_context}
+
+YOUR ROLE:
+1. Analyze the user's mood data when asked
+2. Identify patterns (time of day, day of week, specific layers)
+3. Provide empathetic and actionable insights
+4. Suggest gentle improvements without being preachy
+5. Celebrate positive trends
+6. Be supportive during difficult periods
+
+GUIDELINES:
+- Be warm, friendly, and conversational
+- Use the actual data to back up your observations
+- Keep responses concise but helpful (under 200 words usually)
+- Use emojis sparingly for warmth
+- If asked about something not in the data, acknowledge the limitation
+- Focus on patterns and trends, not single data points
+- Never diagnose or replace professional mental health advice
+
+Remember: You have access to their mood data above. Reference specific dates, scores, and patterns when relevant."""
+
+    try:
+        # Store message in database
+        user_msg = ChatMessage(role="user", content=request.message)
+        await db.chat_messages.insert_one({
+            **user_msg.dict(),
+            "session_id": session_id
+        })
+        
+        # Get chat history for context
+        history = await db.chat_messages.find(
+            {"session_id": session_id}
+        ).sort("timestamp", -1).limit(10).to_list(10)
+        history.reverse()
+        
+        # Create chat instance
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=session_id,
+            system_message=system_message
+        ).with_model("openai", "gpt-4o")
+        
+        # Send message
+        response = await chat.send_message(UserMessage(text=request.message))
+        
+        # Store assistant response
+        assistant_msg = ChatMessage(role="assistant", content=response)
+        await db.chat_messages.insert_one({
+            **assistant_msg.dict(),
+            "session_id": session_id
+        })
+        
+        return ChatResponse(message=response, session_id=session_id)
+        
+    except Exception as e:
+        logging.error(f"Chat error: {e}")
+        raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
+
+@api_router.get("/chat/history/{session_id}")
+async def get_chat_history(session_id: str, limit: int = 50):
+    """Get chat history for a session"""
+    messages = await db.chat_messages.find(
+        {"session_id": session_id}
+    ).sort("timestamp", 1).limit(limit).to_list(limit)
+    
+    return [
+        {
+            "id": msg.get("id"),
+            "role": msg.get("role"),
+            "content": msg.get("content"),
+            "timestamp": msg.get("timestamp")
+        }
+        for msg in messages
+    ]
+
+@api_router.delete("/chat/history/{session_id}")
+async def clear_chat_history(session_id: str):
+    """Clear chat history for a session"""
+    result = await db.chat_messages.delete_many({"session_id": session_id})
+    return {"deleted": result.deleted_count}
+
+@api_router.get("/weekly-summary")
+async def get_weekly_summary():
+    """Get AI-generated weekly mood summary"""
+    summary = await generate_weekly_summary()
+    return {"summary": summary}
 
 # Include the router in the main app
 app.include_router(api_router)
