@@ -26,10 +26,10 @@ interface Message {
 }
 
 const QUICK_QUESTIONS = [
-  "How am I doing this week?",
-  "What's my best time of day?",
-  "Any patterns you notice?",
-  "What should I focus on?",
+  "Jak mi idzie w tym tygodniu?",
+  "Jaka pora dnia jest dla mnie najlepsza?",
+  "Zauważasz jakieś wzorce?",
+  "Na czym powinienem się skupić?",
 ];
 
 export default function ChatScreen() {
@@ -46,11 +46,9 @@ export default function ChatScreen() {
 
   const loadSession = async () => {
     try {
-      // Try to get existing session
       const storedSessionId = await AsyncStorage.getItem('chat_session_id');
       if (storedSessionId) {
         setSessionId(storedSessionId);
-        // Load chat history
         const response = await fetch(`${API_URL}/api/chat/history/${storedSessionId}`);
         if (response.ok) {
           const history = await response.json();
@@ -94,7 +92,6 @@ export default function ChatScreen() {
       if (response.ok) {
         const data = await response.json();
         
-        // Save session ID
         if (data.session_id && data.session_id !== sessionId) {
           setSessionId(data.session_id);
           await AsyncStorage.setItem('chat_session_id', data.session_id);
@@ -110,11 +107,11 @@ export default function ChatScreen() {
         setMessages(prev => [...prev, assistantMessage]);
       } else {
         const error = await response.json();
-        Alert.alert('Error', error.detail || 'Failed to get response');
+        Alert.alert('Błąd', error.detail || 'Nie udało się uzyskać odpowiedzi');
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      Alert.alert('Error', 'Failed to connect to the assistant');
+      Alert.alert('Błąd', 'Nie udało się połączyć z asystentem');
     } finally {
       setLoading(false);
     }
@@ -122,12 +119,12 @@ export default function ChatScreen() {
 
   const clearChat = async () => {
     Alert.alert(
-      'Clear Chat?',
-      'This will delete your conversation history.',
+      'Wyczyścić czat?',
+      'Spowoduje to usunięcie historii rozmowy.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Anuluj', style: 'cancel' },
         {
-          text: 'Clear',
+          text: 'Wyczyść',
           style: 'destructive',
           onPress: async () => {
             if (sessionId) {
@@ -166,7 +163,7 @@ export default function ChatScreen() {
         setShowQuickQuestions(false);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to get weekly summary');
+      Alert.alert('Błąd', 'Nie udało się pobrać podsumowania tygodniowego');
     } finally {
       setLoading(false);
     }
@@ -213,7 +210,7 @@ export default function ChatScreen() {
         <View style={styles.headerActions}>
           <TouchableOpacity style={styles.summaryButton} onPress={getWeeklySummary}>
             <Ionicons name="sparkles" size={18} color="#F59E0B" />
-            <Text style={styles.summaryButtonText}>Weekly Summary</Text>
+            <Text style={styles.summaryButtonText}>Podsumowanie Tygodnia</Text>
           </TouchableOpacity>
           {messages.length > 0 && (
             <TouchableOpacity style={styles.clearButton} onPress={clearChat}>
@@ -233,13 +230,14 @@ export default function ChatScreen() {
           {messages.length === 0 && (
             <View style={styles.welcomeContainer}>
               <Text style={styles.welcomeEmoji}>🤖</Text>
-              <Text style={styles.welcomeTitle}>MoodBuddy</Text>
+              <Text style={styles.welcomeTitle}>Asystent Nastroju</Text>
               <Text style={styles.welcomeText}>
-                Hi! I'm your mood tracking assistant. I can help you understand your mood patterns,
-                identify trends, and provide insights based on your data.
+                Cześć! Jestem Twoim asystentem nastroju. Mogę pomóc Ci zrozumieć
+                wzorce nastrojów, identyfikować trendy i dawać spostrzeżenia
+                na podstawie Twoich danych.
               </Text>
               <Text style={styles.welcomeSubtext}>
-                Ask me anything about your mood!
+                Zapytaj mnie o cokolwiek dotyczącego Twojego nastroju!
               </Text>
             </View>
           )}
@@ -249,7 +247,7 @@ export default function ChatScreen() {
           {loading && (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color="#6366F1" />
-              <Text style={styles.loadingText}>Thinking...</Text>
+              <Text style={styles.loadingText}>Myślę...</Text>
             </View>
           )}
         </ScrollView>
@@ -278,7 +276,7 @@ export default function ChatScreen() {
         <View style={styles.inputContainer}>
           <TextInput
             style={styles.input}
-            placeholder="Ask about your mood..."
+            placeholder="Zapytaj o swój nastrój..."
             placeholderTextColor="#6B7280"
             value={inputText}
             onChangeText={setInputText}

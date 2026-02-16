@@ -22,6 +22,7 @@ import {
   startOfWeek,
   endOfWeek,
 } from 'date-fns';
+import { pl } from 'date-fns/locale';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -41,11 +42,11 @@ interface MoodEntry {
   note: string | null;
 }
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAYS = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'];
 const TIME_LABELS = {
-  morning: { emoji: '🌅', label: 'Morning' },
-  midday: { emoji: '☀️', label: 'Midday' },
-  evening: { emoji: '🌙', label: 'Evening' },
+  morning: { emoji: '🌅', label: 'Rano' },
+  midday: { emoji: '☀️', label: 'Południe' },
+  evening: { emoji: '🌙', label: 'Wieczór' },
 };
 const SCORE_COLORS = ['#EF4444', '#F97316', '#EAB308', '#84CC16', '#22C55E'];
 
@@ -62,6 +63,14 @@ function getScoreColor(score: number): string {
   const index = Math.min(Math.max(Math.round(score) - 1, 0), 4);
   return SCORE_COLORS[index];
 }
+
+const LAYER_LABELS_PL: Record<string, string> = {
+  overall: 'Ogólny',
+  energy: 'Energia',
+  stress: 'Spokój',
+  productivity: 'Produktywność',
+  social: 'Społeczny',
+};
 
 export default function CalendarScreen() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -165,7 +174,6 @@ export default function CalendarScreen() {
                 
                 {isCurrentMonth && dayMoods.length > 0 && (
                   <View style={styles.moodIndicators}>
-                    {/* Time slots indicators */}
                     <View style={styles.timeSlots}>
                       {['morning', 'midday', 'evening'].map((time) => {
                         const timeMood = dayMoods.find(m => m.time_of_day === time);
@@ -192,9 +200,9 @@ export default function CalendarScreen() {
 
   const renderLegend = () => (
     <View style={styles.legend}>
-      <Text style={styles.legendTitle}>Score Colors</Text>
+      <Text style={styles.legendTitle}>Kolory Wyników</Text>
       <View style={styles.legendRow}>
-        {['Very Low', 'Low', 'Okay', 'Good', 'Great'].map((label, i) => (
+        {['Bardzo Niski', 'Niski', 'Średni', 'Dobry', 'Świetny'].map((label, i) => (
           <View key={label} style={styles.legendItem}>
             <View style={[styles.legendDot, { backgroundColor: SCORE_COLORS[i] }]} />
             <Text style={styles.legendText}>{label}</Text>
@@ -202,13 +210,13 @@ export default function CalendarScreen() {
         ))}
       </View>
       <View style={styles.timeSlotLegend}>
-        <Text style={styles.legendSubtitle}>Daily Slots:</Text>
+        <Text style={styles.legendSubtitle}>Pory dnia:</Text>
         <View style={styles.timeSlotExample}>
           <View style={[styles.timeSlot, { backgroundColor: '#22C55E' }]} />
           <View style={[styles.timeSlot, { backgroundColor: '#84CC16' }]} />
           <View style={[styles.timeSlot, { backgroundColor: '#EAB308' }]} />
         </View>
-        <Text style={styles.legendHint}>Morning | Midday | Evening</Text>
+        <Text style={styles.legendHint}>Rano | Południe | Wieczór</Text>
       </View>
     </View>
   );
@@ -222,21 +230,21 @@ export default function CalendarScreen() {
 
     return (
       <View style={styles.statsCard}>
-        <Text style={styles.statsTitle}>This Month</Text>
+        <Text style={styles.statsTitle}>Ten Miesiąc</Text>
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{uniqueDays}</Text>
-            <Text style={styles.statLabel}>Days</Text>
+            <Text style={styles.statLabel}>Dni</Text>
           </View>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{totalEntries}</Text>
-            <Text style={styles.statLabel}>Entries</Text>
+            <Text style={styles.statLabel}>Wpisy</Text>
           </View>
           <View style={styles.statItem}>
             <Text style={[styles.statValue, { color: avgComposite > 0 ? getScoreColor(avgComposite) : '#9CA3AF' }]}>
               {avgComposite > 0 ? avgComposite.toFixed(1) : '-'}
             </Text>
-            <Text style={styles.statLabel}>Avg Score</Text>
+            <Text style={styles.statLabel}>Średnia</Text>
           </View>
         </View>
       </View>
@@ -253,7 +261,7 @@ export default function CalendarScreen() {
           
           <TouchableOpacity onPress={() => setCurrentMonth(new Date())}>
             <Text style={styles.monthTitle}>
-              {format(currentMonth, 'MMMM yyyy')}
+              {format(currentMonth, 'LLLL yyyy', { locale: pl })}
             </Text>
           </TouchableOpacity>
           
@@ -291,7 +299,7 @@ export default function CalendarScreen() {
             {selectedDate && (
               <>
                 <Text style={styles.modalDate}>
-                  {format(new Date(selectedDate), 'EEEE, MMMM d, yyyy')}
+                  {format(new Date(selectedDate), 'EEEE, d MMMM yyyy', { locale: pl })}
                 </Text>
                 
                 {selectedMoods.map((mood) => (
@@ -312,7 +320,7 @@ export default function CalendarScreen() {
                       {Object.entries(mood.layers).map(([key, value]) => (
                         <View key={key} style={styles.modalLayerRow}>
                           <Text style={styles.modalLayerLabel}>
-                            {key.charAt(0).toUpperCase() + key.slice(1)}
+                            {LAYER_LABELS_PL[key] || key}
                           </Text>
                           <View style={styles.modalLayerBar}>
                             <View
@@ -339,7 +347,7 @@ export default function CalendarScreen() {
                   style={styles.modalCloseButton}
                   onPress={() => setModalVisible(false)}
                 >
-                  <Text style={styles.modalCloseText}>Close</Text>
+                  <Text style={styles.modalCloseText}>Zamknij</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -369,6 +377,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: '#FFFFFF',
+    textTransform: 'capitalize',
   },
   loadingContainer: {
     paddingVertical: 100,
@@ -533,6 +542,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     textAlign: 'center',
     marginBottom: 16,
+    textTransform: 'capitalize',
   },
   modalMoodCard: {
     backgroundColor: '#374151',
@@ -567,7 +577,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalLayerLabel: {
-    width: 80,
+    width: 90,
     fontSize: 12,
     color: '#9CA3AF',
   },
