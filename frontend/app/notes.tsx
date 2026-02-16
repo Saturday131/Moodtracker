@@ -125,24 +125,6 @@ export default function NotesScreen() {
     }
   };
 
-  const checkPendingReminders = async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/notes/reminders/pending`);
-      if (response.ok) {
-        const pendingNotes = await response.json();
-        for (const note of pendingNotes) {
-          if (!note.reminder_sent) {
-            await scheduleReminderNotification(note);
-            // Mark as sent
-            await fetch(`${API_URL}/api/notes/reminders/${note.id}/mark-sent`, { method: 'PUT' });
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error checking reminders:', error);
-    }
-  };
-
   const fetchNotes = async () => {
     try {
       if (!refreshing) setLoading(true);
