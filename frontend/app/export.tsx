@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   Alert,
   Share,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,13 +16,20 @@ import * as Clipboard from 'expo-clipboard';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
+interface MoodLayers {
+  overall: number;
+  energy: number;
+  stress: number;
+  productivity: number;
+  social: number;
+}
+
 interface MoodEntry {
   id: string;
-  mood_type: string;
-  mood_value: number;
-  emoji: string;
-  note: string | null;
   date: string;
+  time_of_day: string;
+  layers: MoodLayers;
+  note: string | null;
   timestamp: string;
 }
 
@@ -37,6 +43,7 @@ type ExportRange = 'all' | '30days' | '90days' | 'year';
 
 export default function ExportScreen() {
   const [totalEntries, setTotalEntries] = useState(0);
+  const [uniqueDays, setUniqueDays] = useState(0);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [selectedRange, setSelectedRange] = useState<ExportRange>('all');
@@ -48,6 +55,8 @@ export default function ExportScreen() {
       if (response.ok) {
         const data = await response.json();
         setTotalEntries(data.length);
+        const days = new Set(data.map((m: MoodEntry) => m.date));
+        setUniqueDays(days.size);
       }
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -91,12 +100,11 @@ export default function ExportScreen() {
       const data: ExportData = await response.json();
       const jsonString = JSON.stringify(data, null, 2);
 
-      // Create a readable summary
       const summary = createExportSummary(data);
 
       Alert.alert(
         'Export Ready',
-        `${data.total_entries} mood entries ready to export.\n\n${summary}`,
+        `${data.total_entries} mood entries ready.\n\n${summary}`,
         [
           {
             text: 'Copy JSON',
@@ -132,20 +140,23 @@ export default function ExportScreen() {
   const createExportSummary = (data: ExportData): string => {
     if (data.total_entries === 0) return 'No entries to export.';
 
-    const moodCounts: Record<string, number> = {};
-    data.moods.forEach(mood => {
-      moodCounts[mood.mood_type] = (moodCounts[mood.mood_type] || 0) + 1;
-    });
-
-    const topMood = Object.entries(moodCounts)
-      .sort((a, b) => b[1] - a[1])[0];
-
+    const uniqueDays = new Set(data.moods.map(m => m.date)).size;
     const dates = data.moods.map(m => m.date).sort();
     const dateRange = dates.length > 0 
-      ? `${format(new Date(dates[dates.length - 1]), 'MMM d')} - ${format(new Date(dates[0]), 'MMM d, yyyy')}`
+      ? `${format(new Date(dates[0]), 'MMM d')} - ${format(new Date(dates[dates.length - 1]), 'MMM d, yyyy')}`
       : 'No dates';
 
-    return `Period: ${dateRange}\nMost frequent: ${topMood ? topMood[0] : 'N/A'}`;
+    // Calculate average composite
+    const avgComposite = data.moods.reduce((sum, m) => {
+      const weights = { overall: 0.3, energy: 0.2, stress: 0.2, productivity: 0.15, social: 0.15 };
+      let total = 0;
+      for (const [key, weight] of Object.entries(weights)) {
+        total += (m.layers[key as keyof MoodLayers] || 3) * weight;
+      }
+      return sum + total;
+    }, 0) / data.total_entries;
+
+    return `Period: ${dateRange}\nDays tracked: ${uniqueDays}\nAvg Score: ${avgComposite.toFixed(1)}/5`;
   };
 
   const handleClearData = () => {
@@ -169,6 +180,7 @@ export default function ExportScreen() {
               }
               
               setTotalEntries(0);
+              setUniqueDays(0);
               Alert.alert('Cleared', 'All mood data has been deleted.');
             } catch (error) {
               Alert.alert('Error', 'Failed to clear data.');
@@ -198,13 +210,28 @@ export default function ExportScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Total Entries Card */}
-        <View style={styles.totalCard}>
-          <Ionicons name="document-text" size={40} color="#6366F1" />
-          <View style={styles.totalInfo}>
-            <Text style={styles.totalLabel}>Total Mood Entries</Text>
-            <Text style={styles.totalValue}>{totalEntries}</Text>
+        {/* Stats Card */}
+        <View style={styles.statsCard}>
+          <View style={styles.statItem}>
+            <Ionicons name="document-text" size={32} color="#6366F1" />
+            <Text style={styles.statValue}>{totalEntries}</Text>
+            <Text style={styles.statLabel}>Total Entries</Text>
           </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Ionicons name="calendar" size={32} color="#22C55E" />
+            <Text style={styles.statValue}>{uniqueDays}</Text>
+            <Text style={styles.statLabel}>Days Tracked</Text>
+          </View>
+        </View>
+
+        {/* Data Format Info */}
+        <View style={styles.formatCard}>
+          <Text style={styles.formatTitle}>Export Format</Text>
+          <Text style={styles.formatDesc}>
+            Data includes all mood layers (Overall, Energy, Stress, Productivity, Social), 
+            time of day (Morning, Midday, Evening), notes, and timestamps.
+          </Text>
         </View>
 
         {/* Export Range Selection */}
@@ -253,15 +280,6 @@ export default function ExportScreen() {
           )}
         </TouchableOpacity>
 
-        {/* Info Card */}
-        <View style={styles.infoCard}>
-          <Ionicons name="information-circle" size={24} color="#6366F1" />
-          <Text style={styles.infoText}>
-            Exported data includes mood type, emoji, notes, and timestamps in JSON format. 
-            You can copy to clipboard or share via other apps.
-          </Text>
-        </View>
-
         {/* Danger Zone */}
         <View style={styles.dangerZone}>
           <Text style={styles.dangerTitle}>Danger Zone</Text>
@@ -295,37 +313,63 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 16,
   },
-  totalCard: {
+  statsCard: {
     flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: '#1F2937',
-    margin: 20,
-    marginBottom: 24,
+    margin: 16,
     borderRadius: 16,
     padding: 24,
   },
-  totalInfo: {
-    marginLeft: 20,
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
   },
-  totalLabel: {
-    fontSize: 14,
-    color: '#9CA3AF',
+  statDivider: {
+    width: 1,
+    backgroundColor: '#374151',
+    marginHorizontal: 16,
   },
-  totalValue: {
-    fontSize: 36,
+  statValue: {
+    fontSize: 32,
     fontWeight: 'bold',
     color: '#FFFFFF',
+    marginTop: 8,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 4,
+  },
+  formatCard: {
+    backgroundColor: '#1E1B4B',
+    marginHorizontal: 16,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#312E81',
+  },
+  formatTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#A5B4FC',
+    marginBottom: 8,
+  },
+  formatDesc: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    lineHeight: 20,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    marginHorizontal: 20,
+    marginHorizontal: 16,
+    marginTop: 24,
     marginBottom: 12,
   },
   rangeContainer: {
-    marginHorizontal: 20,
-    marginBottom: 24,
+    marginHorizontal: 16,
+    marginBottom: 20,
   },
   rangeOption: {
     backgroundColor: '#1F2937',
@@ -344,28 +388,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   radioOuter: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 2,
     borderColor: '#6366F1',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 14,
   },
   radioInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: '#6366F1',
   },
   rangeLabel: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: '#FFFFFF',
   },
   rangeDesc: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#9CA3AF',
     marginTop: 2,
   },
@@ -374,7 +418,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#6366F1',
-    marginHorizontal: 20,
+    marginHorizontal: 16,
     borderRadius: 12,
     padding: 18,
     gap: 10,
@@ -384,28 +428,11 @@ const styles = StyleSheet.create({
   },
   exportButtonText: {
     color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: 'bold',
   },
-  infoCard: {
-    flexDirection: 'row',
-    backgroundColor: '#1E1B4B',
-    marginHorizontal: 20,
-    marginTop: 20,
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#312E81',
-  },
-  infoText: {
-    flex: 1,
-    fontSize: 14,
-    color: '#A5B4FC',
-    marginLeft: 12,
-    lineHeight: 20,
-  },
   dangerZone: {
-    margin: 20,
+    margin: 16,
     marginTop: 30,
     padding: 20,
     backgroundColor: '#1F2937',
@@ -414,7 +441,7 @@ const styles = StyleSheet.create({
     borderColor: '#7F1D1D',
   },
   dangerTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
     color: '#EF4444',
     marginBottom: 16,
@@ -425,12 +452,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#7F1D1D',
     borderRadius: 12,
-    padding: 16,
+    padding: 14,
     gap: 10,
   },
   clearButtonText: {
     color: '#EF4444',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
   },
 });

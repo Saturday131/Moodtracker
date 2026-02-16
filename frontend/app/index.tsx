@@ -13,66 +13,111 @@ import {
   Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
-interface MoodOption {
-  type: string;
-  value: number;
-  emoji: string;
-  label: string;
-  color: string;
+interface MoodLayers {
+  overall: number;
+  energy: number;
+  stress: number;
+  productivity: number;
+  social: number;
 }
 
-const MOOD_OPTIONS: MoodOption[] = [
-  { type: 'great', value: 5, emoji: '😄', label: 'Great', color: '#22C55E' },
-  { type: 'good', value: 4, emoji: '🙂', label: 'Good', color: '#84CC16' },
-  { type: 'okay', value: 3, emoji: '😐', label: 'Okay', color: '#EAB308' },
-  { type: 'low', value: 2, emoji: '😔', label: 'Low', color: '#F97316' },
-  { type: 'bad', value: 1, emoji: '😢', label: 'Bad', color: '#EF4444' },
+interface MoodEntry {
+  id: string;
+  date: string;
+  time_of_day: string;
+  layers: MoodLayers;
+  note: string | null;
+}
+
+const TIME_OPTIONS = [
+  { key: 'morning', label: 'Morning', icon: 'sunny', emoji: '🌅' },
+  { key: 'midday', label: 'Midday', icon: 'sunny', emoji: '☀️' },
+  { key: 'evening', label: 'Evening', icon: 'moon', emoji: '🌙' },
 ];
 
+const MOOD_LAYERS = [
+  { key: 'overall', label: 'Overall Mood', emoji: '😊', color: '#6366F1' },
+  { key: 'energy', label: 'Energy Level', emoji: '⚡', color: '#F59E0B' },
+  { key: 'stress', label: 'Calm Level', emoji: '🧘', color: '#10B981' },
+  { key: 'productivity', label: 'Productivity', emoji: '💪', color: '#EC4899' },
+  { key: 'social', label: 'Social Mood', emoji: '👥', color: '#8B5CF6' },
+];
+
+const SCORE_LABELS = ['Very Low', 'Low', 'Okay', 'Good', 'Great'];
+const SCORE_COLORS = ['#EF4444', '#F97316', '#EAB308', '#84CC16', '#22C55E'];
+
 export default function TodayScreen() {
-  const [selectedMood, setSelectedMood] = useState<MoodOption | null>(null);
+  const [selectedTime, setSelectedTime] = useState<string>('morning');
+  const [layers, setLayers] = useState<MoodLayers>({
+    overall: 3,
+    energy: 3,
+    stress: 3,
+    productivity: 3,
+    social: 3,
+  });
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
-  const [todayMood, setTodayMood] = useState<any>(null);
-  const [fetchingToday, setFetchingToday] = useState(true);
+  const [fetchingMood, setFetchingMood] = useState(true);
+  const [existingMoods, setExistingMoods] = useState<Record<string, MoodEntry | null>>({});
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const displayDate = format(new Date(), 'EEEE, MMMM d, yyyy');
 
-  const fetchTodayMood = async () => {
+  // Determine current time of day
+  useEffect(() => {
+    const hour = new Date().getHours();
+    if (hour < 12) setSelectedTime('morning');
+    else if (hour < 17) setSelectedTime('midday');
+    else setSelectedTime('evening');
+  }, []);
+
+  const fetchTodayMoods = async () => {
     try {
-      setFetchingToday(true);
+      setFetchingMood(true);
       const response = await fetch(`${API_URL}/api/moods/date/${today}`);
       if (response.ok) {
         const data = await response.json();
-        if (data) {
-          setTodayMood(data);
-          const mood = MOOD_OPTIONS.find(m => m.type === data.mood_type);
-          if (mood) setSelectedMood(mood);
-          setNote(data.note || '');
+        setExistingMoods(data);
+        
+        // Load current time's mood if exists
+        if (data[selectedTime]) {
+          setLayers(data[selectedTime].layers);
+          setNote(data[selectedTime].note || '');
         }
       }
     } catch (error) {
-      console.error('Error fetching today mood:', error);
+      console.error('Error fetching moods:', error);
     } finally {
-      setFetchingToday(false);
+      setFetchingMood(false);
     }
   };
 
   useEffect(() => {
-    fetchTodayMood();
+    fetchTodayMoods();
   }, [today]);
 
-  const saveMood = async () => {
-    if (!selectedMood) {
-      Alert.alert('Select Mood', 'Please select how you are feeling today');
-      return;
+  useEffect(() => {
+    // When switching time of day, load that time's mood
+    if (existingMoods[selectedTime]) {
+      setLayers(existingMoods[selectedTime]!.layers);
+      setNote(existingMoods[selectedTime]!.note || '');
+    } else {
+      // Reset to defaults if no mood exists
+      setLayers({ overall: 3, energy: 3, stress: 3, productivity: 3, social: 3 });
+      setNote('');
     }
+  }, [selectedTime, existingMoods]);
 
+  const updateLayer = (key: keyof MoodLayers, value: number) => {
+    setLayers(prev => ({ ...prev, [key]: value }));
+  };
+
+  const saveMood = async () => {
     setLoading(true);
     Keyboard.dismiss();
 
@@ -81,18 +126,18 @@ export default function TodayScreen() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mood_type: selectedMood.type,
-          mood_value: selectedMood.value,
-          emoji: selectedMood.emoji,
-          note: note.trim() || null,
           date: today,
+          time_of_day: selectedTime,
+          layers,
+          note: note.trim() || null,
         }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        setTodayMood(data);
-        Alert.alert('Saved!', `Your mood for today has been ${todayMood ? 'updated' : 'recorded'}! ${selectedMood.emoji}`);
+        setExistingMoods(prev => ({ ...prev, [selectedTime]: data }));
+        const timeLabel = TIME_OPTIONS.find(t => t.key === selectedTime)?.label;
+        Alert.alert('Saved!', `Your ${timeLabel?.toLowerCase()} mood has been recorded!`);
       } else {
         Alert.alert('Error', 'Failed to save mood. Please try again.');
       }
@@ -104,7 +149,16 @@ export default function TodayScreen() {
     }
   };
 
-  if (fetchingToday) {
+  const calculateComposite = (): number => {
+    const weights = { overall: 0.3, energy: 0.2, stress: 0.2, productivity: 0.15, social: 0.15 };
+    let total = 0;
+    for (const [key, weight] of Object.entries(weights)) {
+      total += layers[key as keyof MoodLayers] * weight;
+    }
+    return Math.round(total * 10) / 10;
+  };
+
+  if (fetchingMood) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#6366F1" />
@@ -112,6 +166,9 @@ export default function TodayScreen() {
       </View>
     );
   }
+
+  const composite = calculateComposite();
+  const hasExisting = !!existingMoods[selectedTime];
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -124,80 +181,157 @@ export default function TodayScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          {/* Header */}
           <View style={styles.header}>
             <Text style={styles.dateText}>{displayDate}</Text>
-            <Text style={styles.title}>How are you feeling today?</Text>
+            <Text style={styles.title}>How are you feeling?</Text>
           </View>
 
-          <View style={styles.moodContainer}>
-            {MOOD_OPTIONS.map((mood) => (
-              <TouchableOpacity
-                key={mood.type}
-                style={[
-                  styles.moodButton,
-                  selectedMood?.type === mood.type && {
-                    borderColor: mood.color,
-                    backgroundColor: `${mood.color}20`,
-                  },
-                ]}
-                onPress={() => setSelectedMood(mood)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.moodEmoji}>{mood.emoji}</Text>
-                <Text
+          {/* Time of Day Selector */}
+          <View style={styles.timeSelector}>
+            {TIME_OPTIONS.map((time) => {
+              const hasMood = !!existingMoods[time.key];
+              return (
+                <TouchableOpacity
+                  key={time.key}
                   style={[
-                    styles.moodLabel,
-                    selectedMood?.type === mood.type && { color: mood.color },
+                    styles.timeButton,
+                    selectedTime === time.key && styles.timeButtonActive,
                   ]}
+                  onPress={() => setSelectedTime(time.key)}
                 >
-                  {mood.label}
-                </Text>
-              </TouchableOpacity>
+                  <Text style={styles.timeEmoji}>{time.emoji}</Text>
+                  <Text
+                    style={[
+                      styles.timeLabel,
+                      selectedTime === time.key && styles.timeLabelActive,
+                    ]}
+                  >
+                    {time.label}
+                  </Text>
+                  {hasMood && (
+                    <View style={styles.completedDot} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Composite Score */}
+          <View style={styles.compositeCard}>
+            <Text style={styles.compositeLabel}>Composite Score</Text>
+            <Text style={[styles.compositeValue, { color: SCORE_COLORS[Math.round(composite) - 1] || '#6B7280' }]}>
+              {composite.toFixed(1)} / 5.0
+            </Text>
+          </View>
+
+          {/* Mood Layers */}
+          <View style={styles.layersContainer}>
+            {MOOD_LAYERS.map((layer) => (
+              <View key={layer.key} style={styles.layerCard}>
+                <View style={styles.layerHeader}>
+                  <Text style={styles.layerEmoji}>{layer.emoji}</Text>
+                  <Text style={styles.layerLabel}>{layer.label}</Text>
+                  <Text style={[styles.layerValue, { color: SCORE_COLORS[layers[layer.key as keyof MoodLayers] - 1] }]}>
+                    {layers[layer.key as keyof MoodLayers]}
+                  </Text>
+                </View>
+                <View style={styles.scoreButtons}>
+                  {[1, 2, 3, 4, 5].map((score) => (
+                    <TouchableOpacity
+                      key={score}
+                      style={[
+                        styles.scoreButton,
+                        layers[layer.key as keyof MoodLayers] === score && {
+                          backgroundColor: SCORE_COLORS[score - 1],
+                        },
+                      ]}
+                      onPress={() => updateLayer(layer.key as keyof MoodLayers, score)}
+                    >
+                      <Text
+                        style={[
+                          styles.scoreButtonText,
+                          layers[layer.key as keyof MoodLayers] === score && styles.scoreButtonTextActive,
+                        ]}
+                      >
+                        {score}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={styles.scoreLabelsRow}>
+                  <Text style={styles.scoreLabelLeft}>{layer.key === 'stress' ? 'Stressed' : 'Low'}</Text>
+                  <Text style={styles.scoreLabelRight}>{layer.key === 'stress' ? 'Calm' : 'Great'}</Text>
+                </View>
+              </View>
             ))}
           </View>
 
+          {/* Note Input */}
           <View style={styles.noteContainer}>
             <Text style={styles.noteLabel}>Add a note (optional)</Text>
             <TextInput
               style={styles.noteInput}
-              placeholder="What's on your mind?"
+              placeholder="What's happening?"
               placeholderTextColor="#6B7280"
               value={note}
               onChangeText={setNote}
               multiline
-              numberOfLines={4}
+              numberOfLines={3}
               textAlignVertical="top"
             />
           </View>
 
+          {/* Save Button */}
           <TouchableOpacity
-            style={[
-              styles.saveButton,
-              !selectedMood && styles.saveButtonDisabled,
-            ]}
+            style={styles.saveButton}
             onPress={saveMood}
-            disabled={loading || !selectedMood}
+            disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
               <Text style={styles.saveButtonText}>
-                {todayMood ? 'Update Mood' : 'Save Mood'}
+                {hasExisting ? 'Update Mood' : 'Save Mood'}
               </Text>
             )}
           </TouchableOpacity>
 
-          {todayMood && (
-            <View style={styles.savedIndicator}>
-              <Text style={styles.savedText}>
-                Today's mood: {todayMood.emoji} {todayMood.mood_type.charAt(0).toUpperCase() + todayMood.mood_type.slice(1)}
-              </Text>
+          {/* Today's Progress */}
+          <View style={styles.progressCard}>
+            <Text style={styles.progressTitle}>Today's Check-ins</Text>
+            <View style={styles.progressRow}>
+              {TIME_OPTIONS.map((time) => {
+                const hasMood = !!existingMoods[time.key];
+                const mood = existingMoods[time.key];
+                return (
+                  <View key={time.key} style={styles.progressItem}>
+                    <Text style={styles.progressEmoji}>{time.emoji}</Text>
+                    {hasMood && mood ? (
+                      <Text style={[styles.progressScore, { color: SCORE_COLORS[Math.round(calculateCompositeFromLayers(mood.layers)) - 1] }]}>
+                        {calculateCompositeFromLayers(mood.layers).toFixed(1)}
+                      </Text>
+                    ) : (
+                      <Ionicons name="remove" size={20} color="#4B5563" />
+                    )}
+                  </View>
+                );
+              })}
             </View>
-          )}
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
+}
+
+function calculateCompositeFromLayers(layers: MoodLayers): number {
+  const weights = { overall: 0.3, energy: 0.2, stress: 0.2, productivity: 0.15, social: 0.15 };
+  let total = 0;
+  for (const [key, weight] of Object.entries(weights)) {
+    total += (layers[key as keyof MoodLayers] || 3) * weight;
+  }
+  return Math.round(total * 10) / 10;
 }
 
 const styles = StyleSheet.create({
@@ -210,7 +344,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    padding: 20,
+    padding: 16,
   },
   loadingContainer: {
     flex: 1,
@@ -224,90 +358,191 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   header: {
-    marginBottom: 30,
+    marginBottom: 20,
     alignItems: 'center',
   },
   dateText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#9CA3AF',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    textAlign: 'center',
   },
-  moodContainer: {
+  timeSelector: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 12,
-    marginBottom: 30,
+    marginBottom: 16,
+    gap: 8,
   },
-  moodButton: {
-    width: '28%',
-    aspectRatio: 1,
+  timeButton: {
+    flex: 1,
     backgroundColor: '#1F2937',
-    borderRadius: 16,
-    justifyContent: 'center',
+    borderRadius: 12,
+    padding: 12,
     alignItems: 'center',
-    borderWidth: 3,
+    borderWidth: 2,
     borderColor: 'transparent',
   },
-  moodEmoji: {
-    fontSize: 40,
-    marginBottom: 8,
+  timeButtonActive: {
+    borderColor: '#6366F1',
+    backgroundColor: '#1E1B4B',
   },
-  moodLabel: {
-    fontSize: 14,
+  timeEmoji: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  timeLabel: {
+    fontSize: 12,
     fontWeight: '600',
     color: '#9CA3AF',
   },
-  noteContainer: {
-    marginBottom: 24,
+  timeLabelActive: {
+    color: '#FFFFFF',
   },
-  noteLabel: {
-    fontSize: 16,
+  completedDot: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#22C55E',
+  },
+  compositeCard: {
+    backgroundColor: '#1F2937',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  compositeLabel: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    marginBottom: 4,
+  },
+  compositeValue: {
+    fontSize: 28,
+    fontWeight: 'bold',
+  },
+  layersContainer: {
+    gap: 12,
+    marginBottom: 16,
+  },
+  layerCard: {
+    backgroundColor: '#1F2937',
+    borderRadius: 12,
+    padding: 14,
+  },
+  layerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  layerEmoji: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  layerLabel: {
+    flex: 1,
+    fontSize: 15,
     fontWeight: '600',
     color: '#FFFFFF',
-    marginBottom: 10,
+  },
+  layerValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  scoreButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  scoreButton: {
+    flex: 1,
+    backgroundColor: '#374151',
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  scoreButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#9CA3AF',
+  },
+  scoreButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  scoreLabelsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 6,
+  },
+  scoreLabelLeft: {
+    fontSize: 11,
+    color: '#6B7280',
+  },
+  scoreLabelRight: {
+    fontSize: 11,
+    color: '#6B7280',
+  },
+  noteContainer: {
+    marginBottom: 16,
+  },
+  noteLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 8,
   },
   noteInput: {
     backgroundColor: '#1F2937',
     borderRadius: 12,
-    padding: 16,
+    padding: 14,
     color: '#FFFFFF',
-    fontSize: 16,
-    minHeight: 120,
+    fontSize: 15,
+    minHeight: 80,
     borderWidth: 1,
     borderColor: '#374151',
   },
   saveButton: {
     backgroundColor: '#6366F1',
     borderRadius: 12,
-    padding: 18,
+    padding: 16,
     alignItems: 'center',
-    marginBottom: 20,
-  },
-  saveButtonDisabled: {
-    backgroundColor: '#4B5563',
+    marginBottom: 16,
   },
   saveButtonText: {
     color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: 'bold',
   },
-  savedIndicator: {
+  progressCard: {
     backgroundColor: '#1F2937',
     borderRadius: 12,
     padding: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#374151',
+    marginBottom: 20,
   },
-  savedText: {
+  progressTitle: {
+    fontSize: 14,
+    fontWeight: '600',
     color: '#9CA3AF',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  progressRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  progressItem: {
+    alignItems: 'center',
+  },
+  progressEmoji: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  progressScore: {
     fontSize: 16,
+    fontWeight: 'bold',
   },
 });

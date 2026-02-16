@@ -25,30 +25,50 @@ import {
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
-interface MoodEntry {
-  id: string;
-  mood_type: string;
-  mood_value: number;
-  emoji: string;
-  note: string | null;
-  date: string;
+interface MoodLayers {
+  overall: number;
+  energy: number;
+  stress: number;
+  productivity: number;
+  social: number;
 }
 
-const MOOD_COLORS: Record<string, string> = {
-  great: '#22C55E',
-  good: '#84CC16',
-  okay: '#EAB308',
-  low: '#F97316',
-  bad: '#EF4444',
-};
+interface MoodEntry {
+  id: string;
+  date: string;
+  time_of_day: string;
+  layers: MoodLayers;
+  note: string | null;
+}
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const TIME_LABELS = {
+  morning: { emoji: '🌅', label: 'Morning' },
+  midday: { emoji: '☀️', label: 'Midday' },
+  evening: { emoji: '🌙', label: 'Evening' },
+};
+const SCORE_COLORS = ['#EF4444', '#F97316', '#EAB308', '#84CC16', '#22C55E'];
+
+function calculateComposite(layers: MoodLayers): number {
+  const weights = { overall: 0.3, energy: 0.2, stress: 0.2, productivity: 0.15, social: 0.15 };
+  let total = 0;
+  for (const [key, weight] of Object.entries(weights)) {
+    total += (layers[key as keyof MoodLayers] || 3) * weight;
+  }
+  return Math.round(total * 10) / 10;
+}
+
+function getScoreColor(score: number): string {
+  const index = Math.min(Math.max(Math.round(score) - 1, 0), 4);
+  return SCORE_COLORS[index];
+}
 
 export default function CalendarScreen() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [moods, setMoods] = useState<MoodEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedMood, setSelectedMood] = useState<MoodEntry | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedMoods, setSelectedMoods] = useState<MoodEntry[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
 
   const fetchMoods = async () => {
@@ -76,26 +96,22 @@ export default function CalendarScreen() {
     fetchMoods();
   }, [currentMonth]);
 
-  const getMoodForDate = (date: Date): MoodEntry | undefined => {
+  const getMoodsForDate = (date: Date): MoodEntry[] => {
     const dateStr = format(date, 'yyyy-MM-dd');
-    return moods.find(m => m.date === dateStr);
+    return moods.filter(m => m.date === dateStr);
   };
 
-  const goToPreviousMonth = () => {
-    setCurrentMonth(subMonths(currentMonth, 1));
+  const getDayComposite = (dayMoods: MoodEntry[]): number | null => {
+    if (dayMoods.length === 0) return null;
+    const composites = dayMoods.map(m => calculateComposite(m.layers));
+    return composites.reduce((a, b) => a + b, 0) / composites.length;
   };
 
-  const goToNextMonth = () => {
-    setCurrentMonth(addMonths(currentMonth, 1));
-  };
-
-  const goToToday = () => {
-    setCurrentMonth(new Date());
-  };
-
-  const handleDayPress = (mood: MoodEntry | undefined) => {
-    if (mood) {
-      setSelectedMood(mood);
+  const handleDayPress = (date: Date) => {
+    const dayMoods = getMoodsForDate(date);
+    if (dayMoods.length > 0) {
+      setSelectedDate(format(date, 'yyyy-MM-dd'));
+      setSelectedMoods(dayMoods);
       setModalVisible(true);
     }
   };
@@ -111,7 +127,6 @@ export default function CalendarScreen() {
 
     return (
       <View style={styles.calendarGrid}>
-        {/* Weekday Headers */}
         <View style={styles.weekdayRow}>
           {WEEKDAYS.map(day => (
             <View key={day} style={styles.weekdayCell}>
@@ -120,12 +135,12 @@ export default function CalendarScreen() {
           ))}
         </View>
 
-        {/* Calendar Days */}
         <View style={styles.daysContainer}>
           {days.map((day, index) => {
-            const mood = getMoodForDate(day);
+            const dayMoods = getMoodsForDate(day);
             const isCurrentMonth = isSameMonth(day, currentMonth);
             const isToday = isSameDay(day, today);
+            const composite = getDayComposite(dayMoods);
 
             return (
               <TouchableOpacity
@@ -135,8 +150,8 @@ export default function CalendarScreen() {
                   !isCurrentMonth && styles.otherMonthDay,
                   isToday && styles.todayCell,
                 ]}
-                onPress={() => handleDayPress(mood)}
-                disabled={!mood}
+                onPress={() => handleDayPress(day)}
+                disabled={dayMoods.length === 0}
               >
                 <Text
                   style={[
@@ -147,14 +162,24 @@ export default function CalendarScreen() {
                 >
                   {format(day, 'd')}
                 </Text>
-                {mood && isCurrentMonth && (
-                  <View
-                    style={[
-                      styles.moodDot,
-                      { backgroundColor: MOOD_COLORS[mood.mood_type] },
-                    ]}
-                  >
-                    <Text style={styles.moodEmoji}>{mood.emoji}</Text>
+                
+                {isCurrentMonth && dayMoods.length > 0 && (
+                  <View style={styles.moodIndicators}>
+                    {/* Time slots indicators */}
+                    <View style={styles.timeSlots}>
+                      {['morning', 'midday', 'evening'].map((time) => {
+                        const timeMood = dayMoods.find(m => m.time_of_day === time);
+                        return (
+                          <View
+                            key={time}
+                            style={[
+                              styles.timeSlot,
+                              timeMood && { backgroundColor: getScoreColor(calculateComposite(timeMood.layers)) },
+                            ]}
+                          />
+                        );
+                      })}
+                    </View>
                   </View>
                 )}
               </TouchableOpacity>
@@ -167,33 +192,72 @@ export default function CalendarScreen() {
 
   const renderLegend = () => (
     <View style={styles.legend}>
-      {Object.entries(MOOD_COLORS).map(([type, color]) => (
-        <View key={type} style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: color }]} />
-          <Text style={styles.legendText}>
-            {type.charAt(0).toUpperCase() + type.slice(1)}
-          </Text>
+      <Text style={styles.legendTitle}>Score Colors</Text>
+      <View style={styles.legendRow}>
+        {['Very Low', 'Low', 'Okay', 'Good', 'Great'].map((label, i) => (
+          <View key={label} style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: SCORE_COLORS[i] }]} />
+            <Text style={styles.legendText}>{label}</Text>
+          </View>
+        ))}
+      </View>
+      <View style={styles.timeSlotLegend}>
+        <Text style={styles.legendSubtitle}>Daily Slots:</Text>
+        <View style={styles.timeSlotExample}>
+          <View style={[styles.timeSlot, { backgroundColor: '#22C55E' }]} />
+          <View style={[styles.timeSlot, { backgroundColor: '#84CC16' }]} />
+          <View style={[styles.timeSlot, { backgroundColor: '#EAB308' }]} />
         </View>
-      ))}
+        <Text style={styles.legendHint}>Morning | Midday | Evening</Text>
+      </View>
     </View>
   );
+
+  const renderStats = () => {
+    const totalEntries = moods.length;
+    const uniqueDays = new Set(moods.map(m => m.date)).size;
+    const avgComposite = totalEntries > 0
+      ? moods.reduce((sum, m) => sum + calculateComposite(m.layers), 0) / totalEntries
+      : 0;
+
+    return (
+      <View style={styles.statsCard}>
+        <Text style={styles.statsTitle}>This Month</Text>
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{uniqueDays}</Text>
+            <Text style={styles.statLabel}>Days</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{totalEntries}</Text>
+            <Text style={styles.statLabel}>Entries</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={[styles.statValue, { color: avgComposite > 0 ? getScoreColor(avgComposite) : '#9CA3AF' }]}>
+              {avgComposite > 0 ? avgComposite.toFixed(1) : '-'}
+            </Text>
+            <Text style={styles.statLabel}>Avg Score</Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Month Navigation */}
         <View style={styles.monthNavigation}>
-          <TouchableOpacity onPress={goToPreviousMonth} style={styles.navButton}>
+          <TouchableOpacity onPress={() => setCurrentMonth(subMonths(currentMonth, 1))} style={styles.navButton}>
             <Ionicons name="chevron-back" size={28} color="#FFFFFF" />
           </TouchableOpacity>
           
-          <TouchableOpacity onPress={goToToday}>
+          <TouchableOpacity onPress={() => setCurrentMonth(new Date())}>
             <Text style={styles.monthTitle}>
               {format(currentMonth, 'MMMM yyyy')}
             </Text>
           </TouchableOpacity>
           
-          <TouchableOpacity onPress={goToNextMonth} style={styles.navButton}>
+          <TouchableOpacity onPress={() => setCurrentMonth(addMonths(currentMonth, 1))} style={styles.navButton}>
             <Ionicons name="chevron-forward" size={28} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
@@ -206,19 +270,12 @@ export default function CalendarScreen() {
           <>
             {renderCalendar()}
             {renderLegend()}
-            
-            {/* Stats */}
-            <View style={styles.statsCard}>
-              <Text style={styles.statsTitle}>This Month</Text>
-              <Text style={styles.statsValue}>
-                {moods.length} mood{moods.length !== 1 ? 's' : ''} recorded
-              </Text>
-            </View>
+            {renderStats()}
           </>
         )}
       </ScrollView>
 
-      {/* Mood Detail Modal */}
+      {/* Day Detail Modal */}
       <Modal
         visible={modalVisible}
         transparent
@@ -231,21 +288,53 @@ export default function CalendarScreen() {
           onPress={() => setModalVisible(false)}
         >
           <View style={styles.modalContent}>
-            {selectedMood && (
+            {selectedDate && (
               <>
-                <Text style={styles.modalEmoji}>{selectedMood.emoji}</Text>
                 <Text style={styles.modalDate}>
-                  {format(new Date(selectedMood.date), 'EEEE, MMMM d, yyyy')}
+                  {format(new Date(selectedDate), 'EEEE, MMMM d, yyyy')}
                 </Text>
-                <Text style={styles.modalMoodType}>
-                  Feeling {selectedMood.mood_type}
-                </Text>
-                {selectedMood.note && (
-                  <View style={styles.modalNoteContainer}>
-                    <Text style={styles.modalNoteLabel}>Note:</Text>
-                    <Text style={styles.modalNote}>{selectedMood.note}</Text>
+                
+                {selectedMoods.map((mood) => (
+                  <View key={mood.id} style={styles.modalMoodCard}>
+                    <View style={styles.modalMoodHeader}>
+                      <Text style={styles.modalTimeEmoji}>
+                        {TIME_LABELS[mood.time_of_day as keyof typeof TIME_LABELS]?.emoji}
+                      </Text>
+                      <Text style={styles.modalTimeLabel}>
+                        {TIME_LABELS[mood.time_of_day as keyof typeof TIME_LABELS]?.label}
+                      </Text>
+                      <Text style={[styles.modalComposite, { color: getScoreColor(calculateComposite(mood.layers)) }]}>
+                        {calculateComposite(mood.layers).toFixed(1)}
+                      </Text>
+                    </View>
+                    
+                    <View style={styles.modalLayers}>
+                      {Object.entries(mood.layers).map(([key, value]) => (
+                        <View key={key} style={styles.modalLayerRow}>
+                          <Text style={styles.modalLayerLabel}>
+                            {key.charAt(0).toUpperCase() + key.slice(1)}
+                          </Text>
+                          <View style={styles.modalLayerBar}>
+                            <View
+                              style={[
+                                styles.modalLayerFill,
+                                { width: `${(value as number) * 20}%`, backgroundColor: getScoreColor(value as number) },
+                              ]}
+                            />
+                          </View>
+                          <Text style={styles.modalLayerValue}>{value}</Text>
+                        </View>
+                      ))}
+                    </View>
+                    
+                    {mood.note && (
+                      <View style={styles.modalNote}>
+                        <Text style={styles.modalNoteText}>{mood.note}</Text>
+                      </View>
+                    )}
                   </View>
-                )}
+                ))}
+                
                 <TouchableOpacity
                   style={styles.modalCloseButton}
                   onPress={() => setModalVisible(false)}
@@ -277,18 +366,17 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   monthTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
   loadingContainer: {
-    flex: 1,
+    paddingVertical: 100,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 100,
   },
   calendarGrid: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
   },
   weekdayRow: {
     flexDirection: 'row',
@@ -300,7 +388,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   weekdayText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: '#9CA3AF',
   },
@@ -310,10 +398,10 @@ const styles = StyleSheet.create({
   },
   dayCell: {
     width: '14.28%',
-    aspectRatio: 1,
-    justifyContent: 'center',
+    aspectRatio: 0.9,
+    justifyContent: 'flex-start',
     alignItems: 'center',
-    padding: 2,
+    paddingTop: 4,
   },
   otherMonthDay: {
     opacity: 0.3,
@@ -323,7 +411,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   dayNumber: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#FFFFFF',
     fontWeight: '500',
   },
@@ -334,23 +422,35 @@ const styles = StyleSheet.create({
     color: '#6366F1',
     fontWeight: 'bold',
   },
-  moodDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    justifyContent: 'center',
+  moodIndicators: {
+    marginTop: 4,
     alignItems: 'center',
-    marginTop: 2,
   },
-  moodEmoji: {
-    fontSize: 16,
+  timeSlots: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+  timeSlot: {
+    width: 10,
+    height: 10,
+    borderRadius: 2,
+    backgroundColor: '#374151',
   },
   legend: {
+    padding: 16,
+    marginTop: 8,
+  },
+  legendTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#9CA3AF',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  legendRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     justifyContent: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 10,
+    flexWrap: 'wrap',
     gap: 12,
   },
   legendItem: {
@@ -358,83 +458,154 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   legendDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 4,
   },
   legendText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#9CA3AF',
   },
+  timeSlotLegend: {
+    marginTop: 12,
+    alignItems: 'center',
+  },
+  legendSubtitle: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 6,
+  },
+  timeSlotExample: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+  legendHint: {
+    fontSize: 10,
+    color: '#6B7280',
+    marginTop: 4,
+  },
   statsCard: {
-    margin: 20,
+    margin: 16,
     backgroundColor: '#1F2937',
     borderRadius: 16,
     padding: 20,
-    alignItems: 'center',
   },
   statsTitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#9CA3AF',
-    marginBottom: 8,
+    textAlign: 'center',
+    marginBottom: 16,
   },
-  statsValue: {
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statValue: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
+  statLabel: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 4,
+  },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalContent: {
     backgroundColor: '#1F2937',
     borderRadius: 20,
-    padding: 30,
-    width: '85%',
-    alignItems: 'center',
-  },
-  modalEmoji: {
-    fontSize: 60,
-    marginBottom: 16,
+    padding: 20,
+    width: '90%',
+    maxHeight: '80%',
   },
   modalDate: {
     fontSize: 16,
-    color: '#9CA3AF',
-    marginBottom: 8,
-  },
-  modalMoodType: {
-    fontSize: 24,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    textTransform: 'capitalize',
+    textAlign: 'center',
     marginBottom: 16,
   },
-  modalNoteContainer: {
-    width: '100%',
+  modalMoodCard: {
     backgroundColor: '#374151',
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    padding: 14,
+    marginBottom: 12,
   },
-  modalNoteLabel: {
-    fontSize: 14,
+  modalMoodHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  modalTimeEmoji: {
+    fontSize: 24,
+    marginRight: 8,
+  },
+  modalTimeLabel: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  modalComposite: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  modalLayers: {
+    gap: 8,
+  },
+  modalLayerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  modalLayerLabel: {
+    width: 80,
+    fontSize: 12,
     color: '#9CA3AF',
-    marginBottom: 6,
+  },
+  modalLayerBar: {
+    flex: 1,
+    height: 8,
+    backgroundColor: '#1F2937',
+    borderRadius: 4,
+    marginHorizontal: 8,
+  },
+  modalLayerFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  modalLayerValue: {
+    width: 20,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textAlign: 'right',
   },
   modalNote: {
-    fontSize: 16,
-    color: '#FFFFFF',
-    lineHeight: 22,
+    marginTop: 12,
+    padding: 10,
+    backgroundColor: '#1F2937',
+    borderRadius: 8,
+  },
+  modalNoteText: {
+    fontSize: 13,
+    color: '#D1D5DB',
+    fontStyle: 'italic',
   },
   modalCloseButton: {
     backgroundColor: '#6366F1',
     borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 40,
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 8,
   },
   modalCloseText: {
     color: '#FFFFFF',
