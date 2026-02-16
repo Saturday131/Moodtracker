@@ -61,6 +61,16 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="chat"
+        options={{
+          title: 'Chat',
+          headerTitle: 'MoodBuddy',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="chatbubbles" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="export"
         options={{
           title: 'Export',
