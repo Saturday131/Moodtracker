@@ -313,8 +313,8 @@ export default function TrendsScreen() {
 
     return (
       <View style={styles.analysisCard}>
-        <Text style={styles.cardTitle}>Mood by Day of Week</Text>
-        <Text style={styles.cardSubtitle}>Average composite scores</Text>
+        <Text style={styles.cardTitle}>Nastrój wg Dnia Tygodnia</Text>
+        <Text style={styles.cardSubtitle}>Średnie wyniki łączne</Text>
         
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View style={styles.chartContainer}>
