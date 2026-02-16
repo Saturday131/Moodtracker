@@ -244,8 +244,8 @@ export default function TrendsScreen() {
 
     return (
       <View style={styles.analysisCard}>
-        <Text style={styles.cardTitle}>Mood by Time of Day</Text>
-        <Text style={styles.cardSubtitle}>Average composite scores</Text>
+        <Text style={styles.cardTitle}>Nastrój wg Pory Dnia</Text>
+        <Text style={styles.cardSubtitle}>Średnie wyniki łączne</Text>
         
         <View style={styles.chartContainer}>
           <BarChart
