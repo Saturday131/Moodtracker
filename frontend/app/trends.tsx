@@ -181,7 +181,7 @@ export default function TrendsScreen() {
             ]}>
               {compositeChange >= 0 ? '+' : ''}{compositeChange.toFixed(2)}
             </Text>
-            <Text style={styles.changeLabel}>vs previous period</Text>
+            <Text style={styles.changeLabel}>vs poprzedni okres</Text>
           </View>
         </View>
 
