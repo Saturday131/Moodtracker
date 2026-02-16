@@ -417,7 +417,7 @@ export default function TrendsScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#6366F1" />
-        <Text style={styles.loadingText}>Loading analytics...</Text>
+        <Text style={styles.loadingText}>Ładowanie analiz...</Text>
       </View>
     );
   }
