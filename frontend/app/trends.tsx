@@ -170,7 +170,7 @@ export default function TrendsScreen() {
       <>
         {/* Composite Score Card */}
         <View style={styles.compositeCard}>
-          <Text style={styles.compositeLabel}>Average Composite Score</Text>
+          <Text style={styles.compositeLabel}>Średni Wynik Łączny</Text>
           <Text style={[styles.compositeValue, { color: getScoreColor(analytics.average_composite) }]}>
             {analytics.average_composite.toFixed(1)} / 5.0
           </Text>
