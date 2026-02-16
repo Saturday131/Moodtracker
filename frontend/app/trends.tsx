@@ -343,17 +343,17 @@ export default function TrendsScreen() {
         {sortedDays.length >= 2 && (
           <View style={styles.dayInsights}>
             <View style={styles.insightCard}>
-              <Text style={styles.insightLabel}>Best Day</Text>
-              <Text style={[styles.insightDay, { color: '#22C55E' }]}>{sortedDays[0]}</Text>
+              <Text style={styles.insightLabel}>Najlepszy Dzień</Text>
+              <Text style={[styles.insightDay, { color: '#22C55E' }]}>{dayTranslations[sortedDays[0]] || sortedDays[0]}</Text>
               <Text style={styles.insightScore}>
-                {(dayData[sortedDays[0]]?.composite || 0).toFixed(1)} avg
+                {(dayData[sortedDays[0]]?.composite || 0).toFixed(1)} śr.
               </Text>
             </View>
             <View style={styles.insightCard}>
-              <Text style={styles.insightLabel}>Needs Care</Text>
-              <Text style={[styles.insightDay, { color: '#EF4444' }]}>{sortedDays[sortedDays.length - 1]}</Text>
+              <Text style={styles.insightLabel}>Wymaga Uwagi</Text>
+              <Text style={[styles.insightDay, { color: '#EF4444' }]}>{dayTranslations[sortedDays[sortedDays.length - 1]] || sortedDays[sortedDays.length - 1]}</Text>
               <Text style={styles.insightScore}>
-                {(dayData[sortedDays[sortedDays.length - 1]]?.composite || 0).toFixed(1)} avg
+                {(dayData[sortedDays[sortedDays.length - 1]]?.composite || 0).toFixed(1)} śr.
               </Text>
             </View>
           </View>
