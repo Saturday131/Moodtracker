@@ -301,7 +301,7 @@ export default function NotesScreen() {
     try {
       const hasPermission = await requestPermissions();
       if (!hasPermission) {
-        Alert.alert('Permission Required', 'Please grant audio recording permission');
+        Alert.alert('Wymagane Uprawnienia', 'Proszę nadać uprawnienia do nagrywania dźwięku');
         return;
       }
 
@@ -317,7 +317,7 @@ export default function NotesScreen() {
       setIsRecording(true);
     } catch (error) {
       console.error('Error starting recording:', error);
-      Alert.alert('Error', 'Failed to start recording');
+      Alert.alert('Błąd', 'Nie udało się rozpocząć nagrywania');
     }
   };
 
@@ -350,7 +350,7 @@ export default function NotesScreen() {
     try {
       const hasPermission = await requestPermissions();
       if (!hasPermission) {
-        Alert.alert('Permission Required', 'Please grant photo library permission');
+        Alert.alert('Wymagane Uprawnienia', 'Proszę nadać uprawnienia do biblioteki zdjęć');
         return;
       }
 
@@ -365,7 +365,7 @@ export default function NotesScreen() {
         setImageBase64(result.assets[0].base64);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to pick image');
+      Alert.alert('Błąd', 'Nie udało się wybrać zdjęcia');
     }
   };
 
@@ -373,7 +373,7 @@ export default function NotesScreen() {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please grant camera permission');
+        Alert.alert('Wymagane Uprawnienia', 'Proszę nadać uprawnienia do aparatu');
         return;
       }
 
@@ -387,13 +387,13 @@ export default function NotesScreen() {
         setImageBase64(result.assets[0].base64);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to take photo');
+      Alert.alert('Błąd', 'Nie udało się zrobić zdjęcia');
     }
   };
 
   const saveNote = async () => {
     if (!title.trim() && !textContent.trim() && !voiceBase64 && !imageBase64) {
-      Alert.alert('Empty Note', 'Please add some content to your note');
+      Alert.alert('Pusta Notatka', 'Proszę dodać treść do notatki');
       return;
     }
 
