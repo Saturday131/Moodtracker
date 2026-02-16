@@ -17,25 +17,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons'
 import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
-import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
-// Configure notifications with error handling for Expo Go
-try {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-    }),
-  });
-} catch (error) {
-  console.log('Notifications not available in Expo Go');
-}
+// Notifications will be handled on the backend - Expo Go doesn't support push notifications
+// In production builds, you would add expo-notifications here
 
 interface Note {
   id: string;
