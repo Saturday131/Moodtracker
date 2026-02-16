@@ -305,7 +305,8 @@ async def generate_daily_summary() -> str:
         context += f"\nNotes ({len(notes)} total):\n"
         for note in notes:
             title = note.get("title", "Untitled")
-            summary = note.get("ai_summary", note.get("text_content", "")[:100])
+            text_content = note.get("text_content") or ""
+            summary = note.get("ai_summary") or text_content[:100]
             context += f"- {title}: {summary}\n"
     
     if not EMERGENT_LLM_KEY:
