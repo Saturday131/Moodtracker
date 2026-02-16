@@ -289,18 +289,27 @@ export default function TrendsScreen() {
     if (!analytics?.by_day_of_week) return null;
 
     const dayData = analytics.by_day_of_week;
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const days = ['Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota', 'Niedziela'];
     
-    const chartData = days.map(day => ({
-      value: dayData[day]?.composite || 0,
-      label: day.slice(0, 3),
-      frontColor: getScoreColor(dayData[day]?.composite || 0),
-    }));
+    const chartData = days.map((day, idx) => {
+      const englishDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      return {
+        value: dayData[englishDays[idx]]?.composite || 0,
+        label: day.slice(0, 3),
+        frontColor: getScoreColor(dayData[englishDays[idx]]?.composite || 0),
+      };
+    });
 
     // Find best and worst days
-    const sortedDays = days
+    const englishDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const sortedDays = englishDays
       .filter(d => (dayData[d]?.count || 0) > 0)
       .sort((a, b) => (dayData[b]?.composite || 0) - (dayData[a]?.composite || 0));
+    
+    const dayTranslations: Record<string, string> = {
+      'Monday': 'Poniedziałek', 'Tuesday': 'Wtorek', 'Wednesday': 'Środa',
+      'Thursday': 'Czwartek', 'Friday': 'Piątek', 'Saturday': 'Sobota', 'Sunday': 'Niedziela'
+    };
 
     return (
       <View style={styles.analysisCard}>
