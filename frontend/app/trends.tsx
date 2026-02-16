@@ -430,8 +430,8 @@ export default function TrendsScreen() {
 
         {analytics?.total_entries === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>No Data Yet</Text>
-            <Text style={styles.emptyText}>Start recording your mood to see trends!</Text>
+            <Text style={styles.emptyTitle}>Brak Danych</Text>
+            <Text style={styles.emptyText}>Zacznij rejestrować nastrój, aby zobaczyć trendy!</Text>
           </View>
         ) : (
           <>
