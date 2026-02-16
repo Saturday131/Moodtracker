@@ -134,10 +134,10 @@ export default function TrendsScreen() {
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.viewModeScroll}>
       <View style={styles.viewModeContainer}>
         {[
-          { key: 'overview', label: 'Overview' },
-          { key: 'layers', label: 'By Layer' },
-          { key: 'time', label: 'By Time' },
-          { key: 'days', label: 'By Day' },
+          { key: 'overview', label: 'Przegląd' },
+          { key: 'layers', label: 'Wg Warstwy' },
+          { key: 'time', label: 'Wg Pory' },
+          { key: 'days', label: 'Wg Dnia' },
         ].map((mode) => (
           <TouchableOpacity
             key={mode.key}
