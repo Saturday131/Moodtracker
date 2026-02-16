@@ -189,7 +189,7 @@ export default function TrendsScreen() {
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>{analytics.total_entries}</Text>
-            <Text style={styles.statLabel}>Entries</Text>
+            <Text style={styles.statLabel}>Wpisy</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>
@@ -197,7 +197,7 @@ export default function TrendsScreen() {
                 ? Math.round((analytics.total_entries / (analytics.period_days * 3)) * 100)
                 : 0}%
             </Text>
-            <Text style={styles.statLabel}>Consistency</Text>
+            <Text style={styles.statLabel}>Regularność</Text>
           </View>
         </View>
 
