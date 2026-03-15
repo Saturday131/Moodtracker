@@ -79,33 +79,77 @@ export default function ChatScreen() {
     setShowQuickQuestions(false);
     Keyboard.dismiss();
 
+    const lowerText = text.toLowerCase();
+    const isTaskRelated = 
+      lowerText.includes('zadani') || 
+      lowerText.includes('dodaj') ||
+      lowerText.includes('utwórz') ||
+      lowerText.includes('przesuń') ||
+      lowerText.includes('zmień') ||
+      lowerText.includes('usuń') ||
+      lowerText.includes('harmonogram') ||
+      lowerText.includes('codzien') ||
+      lowerText.includes('powtarz');
+
     try {
-      const response = await fetch(`${API_URL}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text.trim(),
-          session_id: sessionId,
-        }),
-      });
+      let response;
+      let assistantContent = '';
 
-      if (response.ok) {
-        const data = await response.json();
-        
-        if (data.session_id && data.session_id !== sessionId) {
-          setSessionId(data.session_id);
-          await AsyncStorage.setItem('chat_session_id', data.session_id);
+      if (isTaskRelated) {
+        // Use task modification endpoint
+        response = await fetch(`${API_URL}/api/tasks/chat-modify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_message: text.trim(),
+            session_id: sessionId,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            assistantContent = data.ai_response || 'Zadania zostały zaktualizowane.';
+            if (data.operations_executed && data.operations_executed.length > 0) {
+              assistantContent += '\n\n✅ Wykonane operacje:\n' + data.operations_executed.map((op: string) => `• ${op}`).join('\n');
+            }
+          } else {
+            assistantContent = data.error || 'Przepraszam, nie udało się zmodyfikować zadań.';
+          }
         }
+      } else {
+        // Use regular chat endpoint
+        response = await fetch(`${API_URL}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text.trim(),
+            session_id: sessionId,
+          }),
+        });
 
+        if (response.ok) {
+          const data = await response.json();
+          
+          if (data.session_id && data.session_id !== sessionId) {
+            setSessionId(data.session_id);
+            await AsyncStorage.setItem('chat_session_id', data.session_id);
+          }
+
+          assistantContent = data.message;
+        }
+      }
+
+      if (response && response.ok) {
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: data.message,
+          content: assistantContent,
           timestamp: new Date().toISOString(),
         };
 
         setMessages(prev => [...prev, assistantMessage]);
-      } else {
+      } else if (response) {
         const error = await response.json();
         Alert.alert('Błąd', error.detail || 'Nie udało się uzyskać odpowiedzi');
       }
