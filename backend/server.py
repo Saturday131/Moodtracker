@@ -1166,7 +1166,11 @@ async def get_settings():
     if not settings:
         default_settings = UserSettings()
         await db.user_settings.insert_one(default_settings.dict())
-        return default_settings.dict()
+        settings = default_settings.dict()
+    else:
+        # Remove MongoDB _id for serialization
+        if "_id" in settings:
+            del settings["_id"]
     return settings
 
 @api_router.put("/settings")
@@ -1191,13 +1195,17 @@ async def update_settings(
     if weekly_notification_time is not None:
         update_data["weekly_notification_time"] = weekly_notification_time
     
-    result = await db.user_settings.update_one(
+    await db.user_settings.update_one(
         {"user_id": "default_user"},
         {"$set": update_data},
         upsert=True
     )
     
-    return await get_settings()
+    # Get updated settings
+    settings = await db.user_settings.find_one({"user_id": "default_user"})
+    if settings and "_id" in settings:
+        del settings["_id"]
+    return settings
 
 # User Context endpoints
 @api_router.get("/context")
