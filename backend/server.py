@@ -561,38 +561,12 @@ async def compare_periods(current_days: int = 7):
 # Note endpoints
 @api_router.post("/notes", response_model=Note)
 async def create_note(input: NoteCreate):
-    """Create a new note with AI analysis and smart reminder suggestion"""
+    """Create a new note - saved exactly as user writes it, no AI modification"""
     note_dict = input.dict()
     note_obj = Note(**note_dict)
     
-    # Transcribe voice note if present
-    if input.voice_base64:
-        transcription = await transcribe_voice_note(input.voice_base64)
-        note_obj.voice_transcription = transcription
-    
-    # Combine all text content for analysis
-    full_content = ""
-    if input.text_content:
-        full_content += input.text_content
-    if note_obj.voice_transcription:
-        full_content += f"\n[Voice Note]: {note_obj.voice_transcription}"
-    if input.title:
-        full_content = f"Title: {input.title}\n{full_content}"
-    
-    # AI analysis
-    if full_content:
-        analysis = await analyze_note_content(
-            full_content,
-            has_voice=bool(input.voice_base64),
-            has_image=bool(input.image_base64)
-        )
-        note_obj.ai_summary = analysis.get("summary")
-        note_obj.ai_keywords = analysis.get("keywords", [])
-        note_obj.ai_suggested_reminder = analysis.get("suggested_reminder")
-        
-        # Auto-set reminder if AI suggests one
-        if analysis.get("suggested_reminder"):
-            note_obj.reminder_date = analysis.get("suggested_reminder")
+    # Store note exactly as user created it - no AI modifications
+    # AI analysis is available separately via /notes/{id}/analyze
     
     await db.notes.insert_one(note_obj.dict())
     return note_obj
