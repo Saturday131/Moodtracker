@@ -475,9 +475,17 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 16,
   },
-  header: {
-    marginBottom: 20,
-    alignItems: 'center',
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  headerLeft: {
+    flex: 1,
+  },
+  settingsButton: {
+    padding: 8,
   },
   dateText: {
     fontSize: 14,
@@ -488,6 +496,79 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
     color: '#FFFFFF',
+  },
+  summaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1F2937',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 16,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#6366F1',
+  },
+  summaryButtonText: {
+    color: '#6366F1',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  summaryCard: {
+    backgroundColor: '#1F2937',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+  },
+  summaryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  summaryTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  summaryText: {
+    color: '#D1D5DB',
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  summaryStats: {
+    gap: 8,
+  },
+  summaryStatRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  summaryStatLabel: {
+    color: '#9CA3AF',
+    fontSize: 14,
+  },
+  summaryStatValue: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  tasksSection: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#374151',
+  },
+  tasksTitle: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  taskItem: {
+    color: '#D1D5DB',
+    fontSize: 13,
+    marginBottom: 4,
   },
   timeSelector: {
     flexDirection: 'row',
