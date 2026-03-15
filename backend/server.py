@@ -1085,6 +1085,132 @@ async def get_daily_summary_endpoint():
     summary = await generate_daily_summary()
     return {"summary": summary}
 
+# New comprehensive summary endpoint
+@api_router.get("/summary/today")
+async def get_today_summary():
+    """Get comprehensive daily summary with mood comparison, notes, and pending tasks"""
+    summary = await generate_comprehensive_daily_summary()
+    return summary
+
+@api_router.get("/summary/week")
+async def get_week_summary():
+    """Get comprehensive weekly summary"""
+    mood_context = await get_mood_context(days=7)
+    notes_context = await get_notes_context(days=7)
+    user_context = await db.user_context.find_one({"user_id": "default_user"})
+    
+    # Get tasks from "zadania" category
+    zadania_notes = await db.notes.find({"category": "zadania"}).sort("created_at", -1).to_list(20)
+    
+    pending_tasks = user_context.get("pending_tasks", []) if user_context else []
+    
+    if not EMERGENT_LLM_KEY:
+        return {
+            "mood_context": mood_context,
+            "notes_context": notes_context,
+            "pending_tasks": pending_tasks,
+            "ai_summary": None
+        }
+    
+    try:
+        context = f"""
+Dane z ostatniego tygodnia:
+
+{mood_context}
+
+{notes_context}
+
+ZADANIA DO WYKONANIA:
+{chr(10).join([f"- {t.get('task', t.get('title', ''))}" for t in (pending_tasks + [{'title': n.get('title')} for n in zadania_notes])[:10]])}
+"""
+        
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"weekly-summary-{uuid.uuid4()}",
+            system_message="""Jesteś pomocnym asystentem nastroju. Wygeneruj obszerne, ale przyjazne podsumowanie tygodnia w języku polskim.
+
+Uwzględnij:
+1. 📊 Ogólny trend nastroju z ostatniego tygodnia - co się poprawiło, co wymaga uwagi
+2. 📈 Porównanie poszczególnych dni - który był najlepszy, który najtrudniejszy
+3. 📝 Najważniejsze tematy z notatek - o czym użytkownik pisał
+4. ✅ Lista zadań do wykonania w nadchodzącym tygodniu
+5. 💡 Konkretne wskazówki jak poprawić nastrój w przyszłym tygodniu
+6. 🎯 Jeden główny cel na następny tydzień
+
+Pisz ciepło, wspierająco i personalnie. Używaj emoji. Max 400 słów."""
+        ).with_model("openai", "gpt-4o")
+        
+        response = await chat.send_message(UserMessage(text=context))
+        
+        return {
+            "period": "week",
+            "pending_tasks": pending_tasks,
+            "zadania_notes": [{"title": n.get("title"), "content": n.get("text_content", "")[:100]} for n in zadania_notes[:5]],
+            "ai_summary": response.strip()
+        }
+    except Exception as e:
+        logging.error(f"Error generating weekly summary: {e}")
+        return {
+            "mood_context": mood_context,
+            "notes_context": notes_context,
+            "ai_summary": None
+        }
+
+# User Settings endpoints
+@api_router.get("/settings")
+async def get_settings():
+    """Get user settings"""
+    settings = await db.user_settings.find_one({"user_id": "default_user"})
+    if not settings:
+        default_settings = UserSettings()
+        await db.user_settings.insert_one(default_settings.dict())
+        return default_settings.dict()
+    return settings
+
+@api_router.put("/settings")
+async def update_settings(
+    daily_notification_enabled: Optional[bool] = None,
+    daily_notification_time: Optional[str] = None,
+    weekly_notification_enabled: Optional[bool] = None,
+    weekly_notification_day: Optional[int] = None,
+    weekly_notification_time: Optional[str] = None
+):
+    """Update user settings"""
+    update_data = {"updated_at": datetime.utcnow()}
+    
+    if daily_notification_enabled is not None:
+        update_data["daily_notification_enabled"] = daily_notification_enabled
+    if daily_notification_time is not None:
+        update_data["daily_notification_time"] = daily_notification_time
+    if weekly_notification_enabled is not None:
+        update_data["weekly_notification_enabled"] = weekly_notification_enabled
+    if weekly_notification_day is not None:
+        update_data["weekly_notification_day"] = weekly_notification_day
+    if weekly_notification_time is not None:
+        update_data["weekly_notification_time"] = weekly_notification_time
+    
+    result = await db.user_settings.update_one(
+        {"user_id": "default_user"},
+        {"$set": update_data},
+        upsert=True
+    )
+    
+    return await get_settings()
+
+# User Context endpoints
+@api_router.get("/context")
+async def get_user_context():
+    """Get learned user context"""
+    context = await db.user_context.find_one({"user_id": "default_user"})
+    return context or {"topics": [], "pending_tasks": [], "insights": ""}
+
+@api_router.post("/context/learn")
+async def learn_user_context():
+    """Trigger learning from user's notes"""
+    await learn_from_notes()
+    context = await db.user_context.find_one({"user_id": "default_user"})
+    return context or {"message": "Context learning started"}
+
 # Include router
 app.include_router(api_router)
 
