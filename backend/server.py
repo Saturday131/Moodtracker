@@ -409,6 +409,223 @@ Keep it under 250 words, warm and encouraging."""
         logging.error(f"Error generating weekly summary: {e}")
         return f"📊 Weekly Summary\n\n{mood_context}"
 
+async def learn_from_notes(user_id: str = "default_user"):
+    """Analyze all user notes and extract tasks, topics, and patterns"""
+    if not EMERGENT_LLM_KEY:
+        return
+    
+    # Get all notes
+    notes = await db.notes.find({}).sort("created_at", -1).to_list(100)
+    if not notes:
+        return
+    
+    # Get existing context
+    existing_context = await db.user_context.find_one({"user_id": user_id})
+    
+    # Prepare notes content for analysis
+    notes_text = ""
+    tasks_notes = []
+    for note in notes:
+        category = note.get("category", "przemyslenia")
+        title = note.get("title", "")
+        content = note.get("text_content", "")
+        date = note.get("created_at", datetime.utcnow()).strftime("%Y-%m-%d")
+        
+        notes_text += f"\n[{date}] ({category}) {title}: {content}\n"
+        
+        if category == "zadania":
+            tasks_notes.append({
+                "note_id": note.get("id"),
+                "title": title,
+                "content": content[:200],
+                "date_mentioned": date
+            })
+    
+    try:
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"learn-context-{uuid.uuid4()}",
+            system_message="""Analyze user's notes and extract:
+1. Main topics/themes the user discusses (max 10)
+2. Any pending/future tasks mentioned (with approximate due dates if mentioned)
+3. User patterns or preferences you notice
+
+Respond in JSON:
+{
+    "topics": ["topic1", "topic2"],
+    "pending_tasks": [{"task": "description", "due_date": "YYYY-MM-DD or null", "source": "from note about..."}],
+    "insights": "Brief observation about user patterns"
+}"""
+        ).with_model("openai", "gpt-4o")
+        
+        response = await chat.send_message(UserMessage(text=notes_text))
+        
+        # Parse response
+        try:
+            json_str = response
+            if "```json" in response:
+                json_str = response.split("```json")[1].split("```")[0]
+            elif "```" in response:
+                json_str = response.split("```")[1].split("```")[0]
+            
+            result = json.loads(json_str.strip())
+            
+            # Update or create context
+            context_data = {
+                "user_id": user_id,
+                "learned_topics": result.get("topics", []),
+                "pending_tasks": result.get("pending_tasks", []),
+                "insights": result.get("insights", ""),
+                "updated_at": datetime.utcnow()
+            }
+            
+            if existing_context:
+                await db.user_context.update_one(
+                    {"user_id": user_id},
+                    {"$set": context_data}
+                )
+            else:
+                context_data["id"] = str(uuid.uuid4())
+                await db.user_context.insert_one(context_data)
+                
+        except Exception as e:
+            logging.error(f"Error parsing context: {e}")
+    except Exception as e:
+        logging.error(f"Error learning from notes: {e}")
+
+async def generate_comprehensive_daily_summary(user_id: str = "default_user") -> dict:
+    """Generate comprehensive daily summary with mood comparison, notes, and pending tasks"""
+    today = datetime.utcnow().date()
+    today_str = today.isoformat()
+    
+    # Get today's moods
+    today_moods = await db.moods.find({"date": today_str}).to_list(10)
+    today_moods = [m for m in today_moods if "time_of_day" in m and "layers" in m]
+    
+    # Get weekly mood data for comparison
+    week_start = (today - timedelta(days=7)).isoformat()
+    week_moods = await db.moods.find({
+        "date": {"$gte": week_start, "$lt": today_str}
+    }).to_list(100)
+    week_moods = [m for m in week_moods if "time_of_day" in m and "layers" in m]
+    
+    # Calculate today's average
+    today_composite = 0
+    if today_moods:
+        today_composite = sum(calculate_composite_score(m["layers"]) for m in today_moods) / len(today_moods)
+    
+    # Calculate weekly average
+    week_composite = 0
+    if week_moods:
+        week_composite = sum(calculate_composite_score(m["layers"]) for m in week_moods) / len(week_moods)
+    
+    # Get today's notes
+    start_of_day = datetime.combine(today, datetime.min.time())
+    today_notes = await db.notes.find({"created_at": {"$gte": start_of_day}}).to_list(50)
+    
+    # Get pending tasks from context
+    user_context = await db.user_context.find_one({"user_id": user_id})
+    pending_tasks = user_context.get("pending_tasks", []) if user_context else []
+    
+    # Get tasks from "zadania" category
+    zadania_notes = await db.notes.find({"category": "zadania"}).sort("created_at", -1).to_list(20)
+    
+    # Build summary data
+    summary_data = {
+        "date": today_str,
+        "mood_today": {
+            "entries": len(today_moods),
+            "average_score": round(today_composite, 1),
+            "moods": [
+                {
+                    "time": m["time_of_day"],
+                    "score": calculate_composite_score(m["layers"]),
+                    "note": m.get("note", "")
+                } for m in today_moods
+            ]
+        },
+        "mood_comparison": {
+            "today_avg": round(today_composite, 1),
+            "week_avg": round(week_composite, 1),
+            "difference": round(today_composite - week_composite, 1),
+            "trend": "up" if today_composite > week_composite else ("down" if today_composite < week_composite else "stable")
+        },
+        "notes_today": [
+            {
+                "id": n.get("id"),
+                "title": n.get("title", ""),
+                "content": n.get("text_content", "")[:150],
+                "category": n.get("category", "przemyslenia"),
+                "time": n.get("created_at", datetime.utcnow()).strftime("%H:%M")
+            } for n in today_notes
+        ],
+        "pending_tasks": pending_tasks[:5],
+        "zadania_notes": [
+            {
+                "title": n.get("title", ""),
+                "content": n.get("text_content", "")[:100],
+                "date": n.get("created_at", datetime.utcnow()).strftime("%Y-%m-%d")
+            } for n in zadania_notes[:5]
+        ],
+        "ai_summary": None
+    }
+    
+    # Generate AI summary
+    if EMERGENT_LLM_KEY and (today_moods or today_notes):
+        try:
+            context = f"""
+Dzisiejsze dane ({today_str}):
+
+NASTRÓJ:
+- Wpisy: {len(today_moods)}
+- Średni wynik: {today_composite:.1f}/5
+- Porównanie z tygodniem: {week_composite:.1f}/5 (różnica: {today_composite - week_composite:+.1f})
+{chr(10).join([f"- {m['time_of_day']}: {calculate_composite_score(m['layers']):.1f}/5" for m in today_moods])}
+
+NOTATKI ({len(today_notes)}):
+{chr(10).join([f"- [{n.get('category')}] {n.get('title', 'Bez tytułu')}: {n.get('text_content', '')[:100]}" for n in today_notes])}
+
+ZADANIA DO WYKONANIA:
+{chr(10).join([f"- {t.get('task', t.get('title', ''))}" for t in (pending_tasks + [{'title': n.get('title')} for n in zadania_notes])[:5]])}
+"""
+            
+            chat = LlmChat(
+                api_key=EMERGENT_LLM_KEY,
+                session_id=f"daily-summary-{uuid.uuid4()}",
+                system_message="""Jesteś pomocnym asystentem nastroju. Wygeneruj ciepłe, wspierające podsumowanie dnia w języku polskim.
+
+Uwzględnij:
+1. 📊 Jak wyglądał nastrój dzisiaj w porównaniu do poprzednich dni
+2. 📝 Najważniejsze rzeczy z notatek
+3. ✅ Przypomnienie o zadaniach do wykonania (jeśli są)
+4. 💡 Jedna pozytywna myśl lub zachęta na zakończenie
+
+Pisz zwięźle (max 200 słów), ciepło i personalnie. Używaj emoji."""
+            ).with_model("openai", "gpt-4o")
+            
+            response = await chat.send_message(UserMessage(text=context))
+            summary_data["ai_summary"] = response.strip()
+        except Exception as e:
+            logging.error(f"Error generating AI summary: {e}")
+    
+    # Save summary to database
+    summary_doc = DailySummary(
+        date=today_str,
+        mood_summary=f"Średni nastrój: {today_composite:.1f}/5",
+        mood_comparison=f"{'Lepiej' if today_composite > week_composite else 'Gorzej' if today_composite < week_composite else 'Tak samo'} niż w poprzednich dniach",
+        notes_summary=f"{len(today_notes)} notatek dzisiaj",
+        pending_tasks=pending_tasks[:5],
+        ai_insights=summary_data.get("ai_summary", "")
+    )
+    
+    await db.daily_summaries.update_one(
+        {"date": today_str},
+        {"$set": summary_doc.dict()},
+        upsert=True
+    )
+    
+    return summary_data
+
 # Routes
 @api_router.get("/")
 async def root():
