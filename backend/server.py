@@ -604,7 +604,8 @@ async def get_notes(
 async def get_notes_library(
     period: str = "all",  # all, week, month, year
     sort_by: str = "date",  # date, title
-    tag: Optional[str] = None
+    tag: Optional[str] = None,
+    category: Optional[str] = None  # "zadania" or "przemyslenia"
 ):
     """Get notes library with organization options"""
     query = {}
@@ -623,6 +624,9 @@ async def get_notes_library(
     
     if tag:
         query["tags"] = tag
+    
+    if category:
+        query["category"] = category
     
     sort_field = "created_at" if sort_by == "date" else "title"
     sort_dir = -1 if sort_by == "date" else 1
