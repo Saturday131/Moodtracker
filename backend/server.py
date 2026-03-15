@@ -1029,8 +1029,19 @@ async def get_tasks_for_date(date: str):
         "scheduled_date": date
     }).to_list(100)
     
-    # Get recurring tasks that should appear on this date
+    # Get tasks created on this date (without scheduled_date)
     target_date = datetime.strptime(date, "%Y-%m-%d")
+    start_of_day = datetime.combine(target_date, datetime.min.time())
+    end_of_day = datetime.combine(target_date, datetime.max.time())
+    
+    created_tasks = await db.notes.find({
+        "category": "zadania",
+        "scheduled_date": {"$in": [None, ""]},
+        "is_recurring": {"$ne": True},
+        "created_at": {"$gte": start_of_day, "$lte": end_of_day}
+    }).to_list(100)
+    
+    # Get recurring tasks that should appear on this date
     day_of_week = target_date.weekday()  # 0=Monday, 6=Sunday
     
     recurring_tasks = await db.notes.find({
@@ -1044,12 +1055,23 @@ async def get_tasks_for_date(date: str):
     }).to_list(100)
     
     result_tasks = []
+    seen_ids = set()
     
     # Add scheduled tasks
     for task in scheduled_tasks:
         if "_id" in task:
             del task["_id"]
-        result_tasks.append(task)
+        if task.get("id") not in seen_ids:
+            result_tasks.append(task)
+            seen_ids.add(task.get("id"))
+    
+    # Add tasks created on this date
+    for task in created_tasks:
+        if "_id" in task:
+            del task["_id"]
+        if task.get("id") not in seen_ids:
+            result_tasks.append(task)
+            seen_ids.add(task.get("id"))
     
     # Check recurring tasks
     for task in recurring_tasks:
@@ -1085,18 +1107,23 @@ async def get_tasks_for_date(date: str):
             if existing:
                 if "_id" in existing:
                     del existing["_id"]
-                result_tasks.append(existing)
+                if existing.get("id") not in seen_ids:
+                    result_tasks.append(existing)
+                    seen_ids.add(existing.get("id"))
             else:
                 # Create virtual instance (not saved yet)
                 instance = task.copy()
                 if "_id" in instance:
                     del instance["_id"]
-                instance["id"] = f"{task.get('id')}_{date}"
-                instance["scheduled_date"] = date
-                instance["parent_task_id"] = task.get("id")
-                instance["is_completed"] = False
-                instance["completed_at"] = None
-                result_tasks.append(instance)
+                instance_id = f"{task.get('id')}_{date}"
+                if instance_id not in seen_ids:
+                    instance["id"] = instance_id
+                    instance["scheduled_date"] = date
+                    instance["parent_task_id"] = task.get("id")
+                    instance["is_completed"] = False
+                    instance["completed_at"] = None
+                    result_tasks.append(instance)
+                    seen_ids.add(instance_id)
     
     return result_tasks
 
