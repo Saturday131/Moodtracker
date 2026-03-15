@@ -126,6 +126,23 @@ export default function TodayScreen() {
     fetchTodayMoods();
   }, [today]);
 
+  const fetchDailySummary = async () => {
+    setLoadingSummary(true);
+    try {
+      const response = await fetch(`${API_URL}/api/summary/today`);
+      if (response.ok) {
+        const data = await response.json();
+        setDailySummary(data);
+        setShowSummary(true);
+      }
+    } catch (error) {
+      console.error('Error fetching summary:', error);
+      Alert.alert('Błąd', 'Nie udało się pobrać podsumowania');
+    } finally {
+      setLoadingSummary(false);
+    }
+  };
+
   useEffect(() => {
     if (existingMoods[selectedTime]) {
       setLayers(existingMoods[selectedTime]!.layers);
