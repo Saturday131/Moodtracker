@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
 
@@ -35,6 +36,27 @@ interface MoodEntry {
   note: string | null;
 }
 
+interface DailySummary {
+  mood_today: {
+    entries: number;
+    average_score: number;
+  };
+  mood_comparison: {
+    today_avg: number;
+    week_avg: number;
+    trend: string;
+  };
+  notes_today: Array<{
+    title: string;
+    content: string;
+    category: string;
+  }>;
+  pending_tasks: Array<{
+    task: string;
+  }>;
+  ai_summary: string | null;
+}
+
 const TIME_OPTIONS = [
   { key: 'morning', label: 'Rano', icon: 'sunny', emoji: '🌅' },
   { key: 'midday', label: 'Południe', icon: 'sunny', emoji: '☀️' },
@@ -53,6 +75,7 @@ const SCORE_LABELS = ['Bardzo Niski', 'Niski', 'Średni', 'Dobry', 'Świetny'];
 const SCORE_COLORS = ['#EF4444', '#F97316', '#EAB308', '#84CC16', '#22C55E'];
 
 export default function TodayScreen() {
+  const router = useRouter();
   const [selectedTime, setSelectedTime] = useState<string>('morning');
   const [layers, setLayers] = useState<MoodLayers>({
     overall: 3,
@@ -65,6 +88,9 @@ export default function TodayScreen() {
   const [loading, setLoading] = useState(false);
   const [fetchingMood, setFetchingMood] = useState(true);
   const [existingMoods, setExistingMoods] = useState<Record<string, MoodEntry | null>>({});
+  const [dailySummary, setDailySummary] = useState<DailySummary | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const displayDate = format(new Date(), 'EEEE, d MMMM yyyy', { locale: pl });
