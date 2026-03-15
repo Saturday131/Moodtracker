@@ -86,6 +86,12 @@ export default function TabLayout() {
           href: null,
         }}
       />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          href: null, // Hidden from tab bar, accessible via button
+        }}
+      />
     </Tabs>
   );
 }
