@@ -221,11 +221,89 @@ export default function TodayScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.dateText}>{displayDate}</Text>
-            <Text style={styles.title}>Jak się czujesz?</Text>
+          {/* Header with Settings */}
+          <View style={styles.headerRow}>
+            <View style={styles.headerLeft}>
+              <Text style={styles.dateText}>{displayDate}</Text>
+              <Text style={styles.title}>Jak się czujesz?</Text>
+            </View>
+            <TouchableOpacity 
+              style={styles.settingsButton}
+              onPress={() => router.push('/settings')}
+            >
+              <Ionicons name="settings-outline" size={24} color="#9CA3AF" />
+            </TouchableOpacity>
           </View>
+
+          {/* Daily Summary Button */}
+          <TouchableOpacity 
+            style={styles.summaryButton}
+            onPress={fetchDailySummary}
+            disabled={loadingSummary}
+          >
+            {loadingSummary ? (
+              <ActivityIndicator size="small" color="#6366F1" />
+            ) : (
+              <>
+                <Ionicons name="sparkles" size={18} color="#6366F1" />
+                <Text style={styles.summaryButtonText}>Pokaż podsumowanie dnia</Text>
+                <Ionicons name="chevron-forward" size={18} color="#6366F1" />
+              </>
+            )}
+          </TouchableOpacity>
+
+          {/* Daily Summary Card */}
+          {showSummary && dailySummary && (
+            <View style={styles.summaryCard}>
+              <View style={styles.summaryHeader}>
+                <Text style={styles.summaryTitle}>📊 Podsumowanie Dnia</Text>
+                <TouchableOpacity onPress={() => setShowSummary(false)}>
+                  <Ionicons name="close" size={20} color="#9CA3AF" />
+                </TouchableOpacity>
+              </View>
+              
+              {dailySummary.ai_summary ? (
+                <Text style={styles.summaryText}>{dailySummary.ai_summary}</Text>
+              ) : (
+                <View style={styles.summaryStats}>
+                  <View style={styles.summaryStatRow}>
+                    <Text style={styles.summaryStatLabel}>Wpisy nastroju:</Text>
+                    <Text style={styles.summaryStatValue}>{dailySummary.mood_today.entries}</Text>
+                  </View>
+                  <View style={styles.summaryStatRow}>
+                    <Text style={styles.summaryStatLabel}>Średni wynik:</Text>
+                    <Text style={[styles.summaryStatValue, { color: SCORE_COLORS[Math.round(dailySummary.mood_today.average_score) - 1] || '#9CA3AF' }]}>
+                      {dailySummary.mood_today.average_score.toFixed(1)}/5
+                    </Text>
+                  </View>
+                  <View style={styles.summaryStatRow}>
+                    <Text style={styles.summaryStatLabel}>Trend:</Text>
+                    <Text style={[styles.summaryStatValue, { 
+                      color: dailySummary.mood_comparison.trend === 'up' ? '#22C55E' : 
+                             dailySummary.mood_comparison.trend === 'down' ? '#EF4444' : '#9CA3AF' 
+                    }]}>
+                      {dailySummary.mood_comparison.trend === 'up' ? '↑ Lepiej' : 
+                       dailySummary.mood_comparison.trend === 'down' ? '↓ Gorzej' : '→ Stabilnie'}
+                    </Text>
+                  </View>
+                  {dailySummary.notes_today.length > 0 && (
+                    <View style={styles.summaryStatRow}>
+                      <Text style={styles.summaryStatLabel}>Notatki:</Text>
+                      <Text style={styles.summaryStatValue}>{dailySummary.notes_today.length}</Text>
+                    </View>
+                  )}
+                  {dailySummary.pending_tasks.length > 0 && (
+                    <View style={styles.tasksSection}>
+                      <Text style={styles.tasksTitle}>✅ Zadania do wykonania:</Text>
+                      {dailySummary.pending_tasks.slice(0, 3).map((task, i) => (
+                        <Text key={i} style={styles.taskItem}>• {task.task || 'Zadanie'}</Text>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+          )}
 
           {/* Time of Day Selector */}
           <View style={styles.timeSelector}>
