@@ -74,6 +74,7 @@ const LAYER_LABELS_PL: Record<string, string> = {
 };
 
 export default function CalendarScreen() {
+  const router = useRouter();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [moods, setMoods] = useState<MoodEntry[]>([]);
   const [loading, setLoading] = useState(true);
