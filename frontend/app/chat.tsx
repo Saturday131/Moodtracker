@@ -27,9 +27,9 @@ interface Message {
 
 const QUICK_QUESTIONS = [
   "Jak mi idzie w tym tygodniu?",
-  "Jaka pora dnia jest dla mnie najlepsza?",
-  "Zauważasz jakieś wzorce?",
-  "Na czym powinienem się skupić?",
+  "Podsumuj mój dzień",
+  "Dodaj codzienne zadanie: wyprowadź psa",
+  "Jakie mam zadania na dziś?",
 ];
 
 export default function ChatScreen() {
