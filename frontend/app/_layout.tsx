@@ -57,11 +57,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="trends"
         options={{
-          title: 'Trendy',
-          headerTitle: 'Trendy Nastroju',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="analytics" size={size} color={color} />
-          ),
+          href: null, // Hidden from tab bar, accessible from calendar
         }}
       />
       <Tabs.Screen
