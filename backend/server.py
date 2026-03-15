@@ -99,8 +99,41 @@ class NoteUpdate(BaseModel):
 
 class ReminderSettings(BaseModel):
     daily_summary_time: str = "21:00"  # 9 PM
-    weekly_summary_day: int = 0  # Monday
-    weekly_summary_time: str = "09:00"  # 9 AM
+    weekly_summary_day: int = 6  # Sunday (0=Monday, 6=Sunday)
+    weekly_summary_time: str = "10:00"  # 10 AM
+
+class UserSettings(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str = "default_user"
+    daily_notification_enabled: bool = True
+    daily_notification_time: str = "21:00"
+    weekly_notification_enabled: bool = True
+    weekly_notification_day: int = 6  # Sunday
+    weekly_notification_time: str = "10:00"
+    language: str = "pl"
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+class UserContext(BaseModel):
+    """Stores learned context about the user from notes and chats"""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str = "default_user"
+    learned_topics: List[str] = []  # Topics user frequently discusses
+    pending_tasks: List[dict] = []  # Tasks extracted from notes {task, date_mentioned, due_date}
+    mood_patterns: dict = {}  # Learned mood patterns
+    preferences: dict = {}  # User preferences learned from interactions
+    last_summary_date: Optional[str] = None
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+class DailySummary(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    date: str
+    mood_summary: str
+    mood_comparison: str
+    notes_summary: str
+    pending_tasks: List[dict] = []
+    ai_insights: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class ChatRequest(BaseModel):
     message: str
