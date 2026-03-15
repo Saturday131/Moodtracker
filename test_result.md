@@ -246,7 +246,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "All Notes API features tested and working"
+    - "Advanced Task Scheduling system tested and working"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -258,6 +258,8 @@ agent_communication:
     message: "New features implemented: Voice notes with AI transcription, Notes library with search/filter, AI-powered note analysis with keyword extraction, Smart reminder suggestions, Daily/Weekly AI summaries. Need backend testing for all new /api/notes/* endpoints."
   - agent: "testing"
     message: "✅ COMPREHENSIVE NOTES API TESTING COMPLETED: All 6 Notes API endpoints tested and working perfectly. POST /api/notes creates notes with AI analysis (summary, keywords, suggested reminders). GET /api/notes/library returns organized notes with proper filtering. GET /api/daily-summary and /api/weekly-summary generate AI-powered summaries. GET /api/notes/reminders/pending returns pending reminders correctly. PUT /api/notes/{id}/reminder accepts AI suggestions and handles errors properly. All edge cases tested including minimal notes, empty notes, invalid IDs, and complex content. AI integration working with EMERGENT_LLM_KEY. No critical issues found."
+  - agent: "testing"
+    message: "✅ ADVANCED TASK SCHEDULING SYSTEM TESTING COMPLETED: All 13 tests passed (100% success rate). Tested task creation with complex recurrence patterns (daily, weekdays, custom Mon/Wed/Fri), scheduled times, end dates. GET /api/tasks/for-date correctly returns tasks based on recurrence patterns - verified Monday (7 tasks), Tuesday (3 tasks), Wednesday (6 tasks), Saturday (2 tasks). POST /api/tasks/chat-modify successfully creates tasks via AI (Polish language). Task completion/uncompletion toggle works properly. Notes library filtering by zadania category works. All advanced scheduling fields (is_recurring, recurrence_pattern, recurrence_days, scheduled_time, recurrence_end_date, scheduled_date) are correctly saved and retrieved. Task deletion works properly. AI integration with EMERGENT_LLM_KEY functional for chat-based task modifications."
 
   - task: "Notes API - POST /api/notes with voice transcription"
     implemented: true
@@ -345,3 +347,63 @@ agent_communication:
       - working: true
         agent: "testing"
         comment: "✅ TESTED: PUT /api/notes/{note_id}/reminder?accept_suggestion=true works correctly. Successfully accepts AI-suggested reminder dates and updates note. Tested with note ID from previous test - reminder date set to 2026-02-20. Proper error handling for invalid note IDs (404 response)."
+
+  - task: "Advanced Task Creation API - POST /api/notes with scheduling"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: POST /api/notes with advanced scheduling fields works perfectly. Creates tasks with is_recurring=true, recurrence_pattern (daily/weekdays/custom), recurrence_days [0,2,4], scheduled_time '06:00', recurrence_end_date, scheduled_date. All fields correctly saved and returned in response."
+
+  - task: "Tasks for Date API - GET /api/tasks/for-date/{date}"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: GET /api/tasks/for-date/{date} correctly implements recurrence logic. Monday (7 tasks): daily+weekdays+custom. Tuesday (3 tasks): daily+weekdays only. Wednesday (6 tasks): daily+weekdays+custom. Saturday (2 tasks): daily only. Recurrence patterns working correctly."
+
+  - task: "Chat Task Modification API - POST /api/tasks/chat-modify"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: POST /api/tasks/chat-modify with Polish message 'Dodaj zadanie Wizyta u dentysty na piątek 2026-03-20 o 14:30' works perfectly. AI correctly interprets natural language, creates task with proper date/time. Returns operations_executed and ai_response in Polish."
+
+  - task: "Task Completion Toggle APIs - PUT /api/tasks/{id}/complete & /uncomplete"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: PUT /api/tasks/{task_id}/complete sets is_completed=true, completed_at timestamp. PUT /api/tasks/{task_id}/uncomplete sets is_completed=false, completed_at=null. Both endpoints return updated Note object with correct completion status."
+
+  - task: "Tasks Library Filtering - GET /api/notes/library?category=zadania"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: GET /api/notes/library?category=zadania returns only task notes (category=zadania), includes scheduling fields (recurrence_days, scheduled_time, recurrence_end_date). Proper structure with total count, notes array, all_tags list. Tasks with advanced scheduling correctly displayed."

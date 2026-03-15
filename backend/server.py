@@ -1100,6 +1100,9 @@ async def get_tasks_for_date(date: str):
         elif pattern == "monthly":
             # Same day of month
             should_include = task_created.day == target_date.day
+        elif pattern == "custom":
+            recurrence_days = task.get("recurrence_days", [])
+            should_include = day_of_week in recurrence_days
         
         if should_include:
             # Check if instance already exists for this date
@@ -1174,6 +1177,9 @@ async def generate_recurring_instances(days_ahead: int = 7):
                 should_generate = task_created.weekday() == day_of_week
             elif pattern == "monthly":
                 should_generate = task_created.day == target_date.day
+            elif pattern == "custom":
+                recurrence_days = task.get("recurrence_days", [])
+                should_generate = day_of_week in recurrence_days
             
             if should_generate:
                 # Check if instance already exists

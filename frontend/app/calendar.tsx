@@ -51,7 +51,10 @@ interface Task {
   is_completed: boolean;
   is_recurring: boolean;
   recurrence_pattern: string | null;
+  recurrence_days: number[];
+  recurrence_end_date: string | null;
   scheduled_date: string | null;
+  scheduled_time: string | null;
   parent_task_id: string | null;
   created_at: string;
 }
@@ -64,7 +67,10 @@ const RECURRENCE_LABELS: Record<string, string> = {
   weekdays: 'Dni robocze',
   weekly: 'Co tydzień',
   monthly: 'Co miesiąc',
+  custom: 'Wybrane dni',
 };
+
+const DAY_SHORT_LABELS = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'];
 
 function calculateComposite(layers: MoodLayers): number {
   const weights = { overall: 0.3, energy: 0.2, stress: 0.2, productivity: 0.15, social: 0.15 };
@@ -401,14 +407,25 @@ export default function CalendarScreen() {
                             {task.text_content}
                           </Text>
                         )}
-                        {task.is_recurring && task.recurrence_pattern && (
-                          <View style={styles.recurringBadge}>
-                            <Ionicons name="repeat" size={12} color="#8B5CF6" />
-                            <Text style={styles.recurringText}>
-                              {RECURRENCE_LABELS[task.recurrence_pattern] || task.recurrence_pattern}
-                            </Text>
-                          </View>
-                        )}
+                        <View style={styles.taskMeta}>
+                          {task.scheduled_time && (
+                            <View style={styles.taskTimeBadge}>
+                              <Ionicons name="time-outline" size={12} color="#60A5FA" />
+                              <Text style={styles.taskTimeText}>{task.scheduled_time}</Text>
+                            </View>
+                          )}
+                          {task.is_recurring && task.recurrence_pattern && (
+                            <View style={styles.recurringBadge}>
+                              <Ionicons name="repeat" size={12} color="#8B5CF6" />
+                              <Text style={styles.recurringText}>
+                                {RECURRENCE_LABELS[task.recurrence_pattern] || task.recurrence_pattern}
+                                {task.recurrence_pattern === 'custom' && task.recurrence_days?.length > 0
+                                  ? ` (${task.recurrence_days.map(d => DAY_SHORT_LABELS[d]).join(', ')})`
+                                  : ''}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
                       </View>
                     </View>
                     
@@ -666,13 +683,34 @@ const styles = StyleSheet.create({
   recurringBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 6,
+    marginTop: 4,
     gap: 4,
   },
   recurringText: {
     color: '#8B5CF6',
     fontSize: 11,
     fontWeight: '500',
+  },
+  taskMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  taskTimeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E3A5F',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    gap: 3,
+  },
+  taskTimeText: {
+    color: '#60A5FA',
+    fontSize: 11,
+    fontWeight: '600',
   },
   deleteTaskButton: {
     padding: 8,

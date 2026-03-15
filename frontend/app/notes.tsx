@@ -30,7 +30,10 @@ interface Note {
   is_completed: boolean;
   is_recurring: boolean;
   recurrence_pattern: string | null;
+  recurrence_days: number[];
+  recurrence_end_date: string | null;
   scheduled_date: string | null;
+  scheduled_time: string | null;
   created_at: string;
 }
 
@@ -45,6 +48,17 @@ const RECURRENCE_OPTIONS = [
   { key: 'weekdays', label: 'Dni robocze', icon: 'briefcase-outline' },
   { key: 'weekly', label: 'Co tydzień', icon: 'calendar-outline' },
   { key: 'monthly', label: 'Co miesiąc', icon: 'calendar-number-outline' },
+  { key: 'custom', label: 'Wybrane dni', icon: 'options-outline' },
+];
+
+const DAY_LABELS = [
+  { key: 0, short: 'Pn' },
+  { key: 1, short: 'Wt' },
+  { key: 2, short: 'Śr' },
+  { key: 3, short: 'Cz' },
+  { key: 4, short: 'Pt' },
+  { key: 5, short: 'So' },
+  { key: 6, short: 'Nd' },
 ];
 
 export default function NotesScreen() {
@@ -52,7 +66,7 @@ export default function NotesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  
+
   // Create note modal
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -60,9 +74,12 @@ export default function NotesScreen() {
   const [newCategory, setNewCategory] = useState('przemyslenia');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrencePattern, setRecurrencePattern] = useState<string | null>(null);
-  const [scheduledDate, setScheduledDate] = useState<string | null>(null);
+  const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [scheduledTime, setScheduledTime] = useState('');
   const [saving, setSaving] = useState(false);
-  
+
   // View note modal
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -70,12 +87,12 @@ export default function NotesScreen() {
   const fetchNotes = async () => {
     try {
       if (!refreshing) setLoading(true);
-      
+
       let url = `${API_URL}/api/notes/library?period=all`;
       if (selectedCategory) {
         url += `&category=${selectedCategory}`;
       }
-      
+
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
@@ -104,7 +121,10 @@ export default function NotesScreen() {
     setNewCategory('przemyslenia');
     setIsRecurring(false);
     setRecurrencePattern(null);
-    setScheduledDate(null);
+    setRecurrenceDays([]);
+    setRecurrenceEndDate('');
+    setScheduledDate('');
+    setScheduledTime('');
   };
 
   const saveNote = async () => {
@@ -115,14 +135,18 @@ export default function NotesScreen() {
 
     setSaving(true);
     try {
+      const isTask = newCategory === 'zadania';
       const noteData: any = {
         title: newTitle.trim() || null,
         text_content: newContent.trim(),
         category: newCategory,
         tags: [],
-        is_recurring: isRecurring && newCategory === 'zadania',
-        recurrence_pattern: isRecurring && newCategory === 'zadania' ? recurrencePattern : null,
-        scheduled_date: scheduledDate,
+        is_recurring: isTask && isRecurring,
+        recurrence_pattern: isTask && isRecurring ? recurrencePattern : null,
+        recurrence_days: isTask && isRecurring && recurrencePattern === 'custom' ? recurrenceDays : [],
+        recurrence_end_date: isTask && isRecurring && recurrenceEndDate ? recurrenceEndDate : null,
+        scheduled_date: isTask && scheduledDate ? scheduledDate : null,
+        scheduled_time: isTask && scheduledTime ? scheduledTime : null,
       };
 
       const response = await fetch(`${API_URL}/api/notes`, {
@@ -180,6 +204,12 @@ export default function NotesScreen() {
     );
   };
 
+  const toggleDay = (day: number) => {
+    setRecurrenceDays(prev =>
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort()
+    );
+  };
+
   const getCategoryInfo = (category: string) => {
     return CATEGORIES.find(c => c.key === category) || CATEGORIES[1];
   };
@@ -197,13 +227,19 @@ export default function NotesScreen() {
     return option?.label || pattern;
   };
 
+  const getDaysLabel = (days: number[]) => {
+    if (!days || days.length === 0) return '';
+    return days.map(d => DAY_LABELS.find(l => l.key === d)?.short || '').join(', ');
+  };
+
   const renderNote = (note: Note) => {
     const catInfo = getCategoryInfo(note.category);
     const isTask = note.category === 'zadania';
-    
+
     return (
       <TouchableOpacity
         key={note.id}
+        data-testid={`note-card-${note.id}`}
         style={[styles.noteCard, note.is_completed && styles.noteCardCompleted]}
         onPress={() => {
           setSelectedNote(note);
@@ -212,18 +248,19 @@ export default function NotesScreen() {
       >
         <View style={styles.noteRow}>
           {isTask && (
-            <TouchableOpacity 
+            <TouchableOpacity
+              data-testid={`note-checkbox-${note.id}`}
               style={styles.noteCheckbox}
               onPress={() => toggleComplete(note.id, note.is_completed)}
             >
-              <Ionicons 
-                name={note.is_completed ? "checkbox" : "square-outline"} 
-                size={22} 
-                color={note.is_completed ? "#22C55E" : "#F59E0B"} 
+              <Ionicons
+                name={note.is_completed ? 'checkbox' : 'square-outline'}
+                size={22}
+                color={note.is_completed ? '#22C55E' : '#F59E0B'}
               />
             </TouchableOpacity>
           )}
-          
+
           <View style={styles.noteMainContent}>
             <View style={styles.noteHeader}>
               <View style={[styles.categoryBadge, { backgroundColor: catInfo.color + '20' }]}>
@@ -235,23 +272,38 @@ export default function NotesScreen() {
                   <Ionicons name="repeat" size={12} color="#8B5CF6" />
                 </View>
               )}
+              {note.scheduled_time && (
+                <View style={styles.timeBadge}>
+                  <Ionicons name="time-outline" size={12} color="#3B82F6" />
+                  <Text style={styles.timeText}>{note.scheduled_time}</Text>
+                </View>
+              )}
               <Text style={styles.noteDate}>{formatDate(note.created_at)}</Text>
             </View>
-            
+
             {note.title && (
               <Text style={[styles.noteTitle, note.is_completed && styles.textCompleted]} numberOfLines={1}>
                 {note.title}
               </Text>
             )}
-            
+
             <Text style={[styles.noteContent, note.is_completed && styles.textCompleted]} numberOfLines={2}>
               {note.text_content}
             </Text>
-            
+
             {note.is_recurring && note.recurrence_pattern && (
-              <Text style={styles.recurrenceInfo}>
-                🔄 {getRecurrenceLabel(note.recurrence_pattern)}
-              </Text>
+              <View style={styles.recurrenceInfoRow}>
+                <Ionicons name="repeat" size={12} color="#8B5CF6" />
+                <Text style={styles.recurrenceInfo}>
+                  {getRecurrenceLabel(note.recurrence_pattern)}
+                  {note.recurrence_pattern === 'custom' && note.recurrence_days?.length > 0
+                    ? ` (${getDaysLabel(note.recurrence_days)})`
+                    : ''}
+                </Text>
+                {note.recurrence_end_date && (
+                  <Text style={styles.recurrenceEndInfo}>do {note.recurrence_end_date}</Text>
+                )}
+              </View>
             )}
           </View>
         </View>
@@ -273,21 +325,19 @@ export default function NotesScreen() {
       {/* Category Filter */}
       <View style={styles.categoryFilter}>
         <TouchableOpacity
-          style={[
-            styles.filterButton,
-            !selectedCategory && styles.filterButtonActive,
-          ]}
+          data-testid="filter-all"
+          style={[styles.filterButton, !selectedCategory && styles.filterButtonActive]}
           onPress={() => setSelectedCategory(null)}
         >
-          <Text style={[
-            styles.filterText,
-            !selectedCategory && styles.filterTextActive,
-          ]}>Wszystkie</Text>
+          <Text style={[styles.filterText, !selectedCategory && styles.filterTextActive]}>
+            Wszystkie
+          </Text>
         </TouchableOpacity>
-        
-        {CATEGORIES.map((cat) => (
+
+        {CATEGORIES.map(cat => (
           <TouchableOpacity
             key={cat.key}
+            data-testid={`filter-${cat.key}`}
             style={[
               styles.filterButton,
               selectedCategory === cat.key && styles.filterButtonActive,
@@ -295,15 +345,14 @@ export default function NotesScreen() {
             ]}
             onPress={() => setSelectedCategory(cat.key)}
           >
-            <Ionicons 
-              name={cat.icon as any} 
-              size={16} 
-              color={selectedCategory === cat.key ? cat.color : '#9CA3AF'} 
+            <Ionicons
+              name={cat.icon as any}
+              size={16}
+              color={selectedCategory === cat.key ? cat.color : '#9CA3AF'}
             />
-            <Text style={[
-              styles.filterText,
-              selectedCategory === cat.key && { color: cat.color },
-            ]}>{cat.label}</Text>
+            <Text style={[styles.filterText, selectedCategory === cat.key && { color: cat.color }]}>
+              {cat.label}
+            </Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -332,6 +381,7 @@ export default function NotesScreen() {
 
       {/* Add Note Button */}
       <TouchableOpacity
+        data-testid="add-note-button"
         style={styles.addButton}
         onPress={() => setShowCreateModal(true)}
       >
@@ -348,19 +398,22 @@ export default function NotesScreen() {
           resetCreateForm();
         }}
       >
-        <KeyboardAvoidingView 
+        <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.modalContainer}
         >
           <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => {
-              setShowCreateModal(false);
-              resetCreateForm();
-            }}>
+            <TouchableOpacity
+              data-testid="create-modal-cancel"
+              onPress={() => {
+                setShowCreateModal(false);
+                resetCreateForm();
+              }}
+            >
               <Text style={styles.cancelText}>Anuluj</Text>
             </TouchableOpacity>
             <Text style={styles.modalTitle}>Nowa notatka</Text>
-            <TouchableOpacity onPress={saveNote} disabled={saving}>
+            <TouchableOpacity data-testid="create-modal-save" onPress={saveNote} disabled={saving}>
               {saving ? (
                 <ActivityIndicator size="small" color="#6366F1" />
               ) : (
@@ -369,32 +422,37 @@ export default function NotesScreen() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalContent}>
+          <ScrollView style={styles.modalContent} keyboardShouldPersistTaps="handled">
             {/* Category Selection */}
             <View style={styles.formSection}>
               <Text style={styles.sectionLabel}>Kategoria</Text>
               <View style={styles.categoryButtons}>
-                {CATEGORIES.map((cat) => (
+                {CATEGORIES.map(cat => (
                   <TouchableOpacity
                     key={cat.key}
+                    data-testid={`category-${cat.key}`}
                     style={[
                       styles.categorySelectButton,
-                      newCategory === cat.key && { 
+                      newCategory === cat.key && {
                         backgroundColor: cat.color + '20',
                         borderColor: cat.color,
                       },
                     ]}
                     onPress={() => setNewCategory(cat.key)}
                   >
-                    <Ionicons 
-                      name={cat.icon as any} 
-                      size={20} 
-                      color={newCategory === cat.key ? cat.color : '#9CA3AF'} 
+                    <Ionicons
+                      name={cat.icon as any}
+                      size={20}
+                      color={newCategory === cat.key ? cat.color : '#9CA3AF'}
                     />
-                    <Text style={[
-                      styles.categorySelectText,
-                      newCategory === cat.key && { color: cat.color },
-                    ]}>{cat.label}</Text>
+                    <Text
+                      style={[
+                        styles.categorySelectText,
+                        newCategory === cat.key && { color: cat.color },
+                      ]}
+                    >
+                      {cat.label}
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -404,6 +462,7 @@ export default function NotesScreen() {
             <View style={styles.formSection}>
               <Text style={styles.sectionLabel}>Tytuł (opcjonalnie)</Text>
               <TextInput
+                data-testid="note-title-input"
                 style={styles.titleInput}
                 placeholder="Np. Spotkanie z lekarzem"
                 placeholderTextColor="#6B7280"
@@ -416,6 +475,7 @@ export default function NotesScreen() {
             <View style={styles.formSection}>
               <Text style={styles.sectionLabel}>Treść</Text>
               <TextInput
+                data-testid="note-content-input"
                 style={styles.contentInput}
                 placeholder="Co chcesz zapisać?"
                 placeholderTextColor="#6B7280"
@@ -426,55 +486,150 @@ export default function NotesScreen() {
               />
             </View>
 
-            {/* Recurring Task Options (only for tasks) */}
+            {/* Task Scheduling Options */}
             {newCategory === 'zadania' && (
-              <View style={styles.formSection}>
-                <View style={styles.recurringHeader}>
-                  <Ionicons name="repeat" size={20} color="#8B5CF6" />
-                  <Text style={styles.sectionLabel}>Zadanie powtarzalne</Text>
-                  <Switch
-                    value={isRecurring}
-                    onValueChange={setIsRecurring}
-                    trackColor={{ false: '#374151', true: '#8B5CF6' }}
-                    thumbColor="#FFFFFF"
+              <>
+                {/* Scheduled Date */}
+                <View style={styles.formSection}>
+                  <View style={styles.fieldRow}>
+                    <Ionicons name="calendar-outline" size={18} color="#3B82F6" />
+                    <Text style={styles.sectionLabel}>Data zadania</Text>
+                  </View>
+                  <TextInput
+                    data-testid="scheduled-date-input"
+                    style={styles.titleInput}
+                    placeholder="RRRR-MM-DD (np. 2026-02-20)"
+                    placeholderTextColor="#6B7280"
+                    value={scheduledDate}
+                    onChangeText={setScheduledDate}
+                    keyboardType="numbers-and-punctuation"
                   />
                 </View>
-                
-                {isRecurring && (
-                  <View style={styles.recurrenceOptions}>
-                    {RECURRENCE_OPTIONS.filter(o => o.key !== null).map((option) => (
-                      <TouchableOpacity
-                        key={option.key}
-                        style={[
-                          styles.recurrenceOption,
-                          recurrencePattern === option.key && styles.recurrenceOptionActive,
-                        ]}
-                        onPress={() => setRecurrencePattern(option.key)}
-                      >
-                        <Ionicons 
-                          name={option.icon as any} 
-                          size={18} 
-                          color={recurrencePattern === option.key ? '#8B5CF6' : '#9CA3AF'} 
-                        />
-                        <Text style={[
-                          styles.recurrenceOptionText,
-                          recurrencePattern === option.key && styles.recurrenceOptionTextActive,
-                        ]}>{option.label}</Text>
-                      </TouchableOpacity>
-                    ))}
+
+                {/* Scheduled Time */}
+                <View style={styles.formSection}>
+                  <View style={styles.fieldRow}>
+                    <Ionicons name="time-outline" size={18} color="#3B82F6" />
+                    <Text style={styles.sectionLabel}>Godzina</Text>
+                  </View>
+                  <TextInput
+                    data-testid="scheduled-time-input"
+                    style={styles.titleInput}
+                    placeholder="GG:MM (np. 14:30)"
+                    placeholderTextColor="#6B7280"
+                    value={scheduledTime}
+                    onChangeText={setScheduledTime}
+                    keyboardType="numbers-and-punctuation"
+                  />
+                </View>
+
+                {/* Recurring Toggle */}
+                <View style={styles.formSection}>
+                  <View style={styles.recurringHeader}>
+                    <Ionicons name="repeat" size={20} color="#8B5CF6" />
+                    <Text style={styles.sectionLabel}>Zadanie powtarzalne</Text>
+                    <Switch
+                      data-testid="recurring-toggle"
+                      value={isRecurring}
+                      onValueChange={setIsRecurring}
+                      trackColor={{ false: '#374151', true: '#8B5CF6' }}
+                      thumbColor="#FFFFFF"
+                    />
+                  </View>
+
+                  {isRecurring && (
+                    <View style={styles.recurrenceOptions}>
+                      {RECURRENCE_OPTIONS.filter(o => o.key !== null).map(option => (
+                        <TouchableOpacity
+                          key={option.key}
+                          data-testid={`recurrence-${option.key}`}
+                          style={[
+                            styles.recurrenceOption,
+                            recurrencePattern === option.key && styles.recurrenceOptionActive,
+                          ]}
+                          onPress={() => setRecurrencePattern(option.key)}
+                        >
+                          <Ionicons
+                            name={option.icon as any}
+                            size={18}
+                            color={recurrencePattern === option.key ? '#8B5CF6' : '#9CA3AF'}
+                          />
+                          <Text
+                            style={[
+                              styles.recurrenceOptionText,
+                              recurrencePattern === option.key && styles.recurrenceOptionTextActive,
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* Custom Days Selector */}
+                {isRecurring && recurrencePattern === 'custom' && (
+                  <View style={styles.formSection}>
+                    <Text style={styles.sectionLabel}>Wybierz dni tygodnia</Text>
+                    <View style={styles.daysRow}>
+                      {DAY_LABELS.map(day => (
+                        <TouchableOpacity
+                          key={day.key}
+                          data-testid={`day-${day.key}`}
+                          style={[
+                            styles.dayChip,
+                            recurrenceDays.includes(day.key) && styles.dayChipActive,
+                          ]}
+                          onPress={() => toggleDay(day.key)}
+                        >
+                          <Text
+                            style={[
+                              styles.dayChipText,
+                              recurrenceDays.includes(day.key) && styles.dayChipTextActive,
+                            ]}
+                          >
+                            {day.short}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
                   </View>
                 )}
-              </View>
-            )}
 
-            {/* Info about recurring tasks */}
-            {newCategory === 'zadania' && isRecurring && (
-              <View style={styles.infoBox}>
-                <Ionicons name="information-circle-outline" size={18} color="#6B7280" />
-                <Text style={styles.infoText}>
-                  Zadania powtarzalne będą automatycznie pojawiać się w kalendarzu zgodnie z wybranym harmonogramem.
-                </Text>
-              </View>
+                {/* Recurrence End Date */}
+                {isRecurring && recurrencePattern && (
+                  <View style={styles.formSection}>
+                    <View style={styles.fieldRow}>
+                      <Ionicons name="flag-outline" size={18} color="#EF4444" />
+                      <Text style={styles.sectionLabel}>Data końca powtarzania</Text>
+                    </View>
+                    <TextInput
+                      data-testid="recurrence-end-date-input"
+                      style={styles.titleInput}
+                      placeholder="RRRR-MM-DD (opcjonalnie)"
+                      placeholderTextColor="#6B7280"
+                      value={recurrenceEndDate}
+                      onChangeText={setRecurrenceEndDate}
+                      keyboardType="numbers-and-punctuation"
+                    />
+                    <Text style={styles.helperText}>
+                      Zostaw puste, aby zadanie powtarzało się bez końca
+                    </Text>
+                  </View>
+                )}
+
+                {/* Info box */}
+                {isRecurring && (
+                  <View style={styles.infoBox}>
+                    <Ionicons name="information-circle-outline" size={18} color="#6B7280" />
+                    <Text style={styles.infoText}>
+                      Zadania powtarzalne będą automatycznie pojawiać się w kalendarzu zgodnie z
+                      wybranym harmonogramem.
+                    </Text>
+                  </View>
+                )}
+              </>
             )}
           </ScrollView>
         </KeyboardAvoidingView>
@@ -489,11 +644,17 @@ export default function NotesScreen() {
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowDetailModal(false)}>
+            <TouchableOpacity
+              data-testid="detail-modal-close"
+              onPress={() => setShowDetailModal(false)}
+            >
               <Ionicons name="close" size={24} color="#FFFFFF" />
             </TouchableOpacity>
             <Text style={styles.modalTitle}>Notatka</Text>
-            <TouchableOpacity onPress={() => selectedNote && deleteNote(selectedNote.id)}>
+            <TouchableOpacity
+              data-testid="detail-modal-delete"
+              onPress={() => selectedNote && deleteNote(selectedNote.id)}
+            >
               <Ionicons name="trash-outline" size={24} color="#EF4444" />
             </TouchableOpacity>
           </View>
@@ -501,19 +662,23 @@ export default function NotesScreen() {
           {selectedNote && (
             <ScrollView style={styles.detailContent}>
               <View style={styles.detailHeader}>
-                <View style={[
-                  styles.categoryBadge, 
-                  { backgroundColor: getCategoryInfo(selectedNote.category).color + '20' }
-                ]}>
-                  <Ionicons 
-                    name={getCategoryInfo(selectedNote.category).icon as any} 
-                    size={14} 
-                    color={getCategoryInfo(selectedNote.category).color} 
+                <View
+                  style={[
+                    styles.categoryBadge,
+                    { backgroundColor: getCategoryInfo(selectedNote.category).color + '20' },
+                  ]}
+                >
+                  <Ionicons
+                    name={getCategoryInfo(selectedNote.category).icon as any}
+                    size={14}
+                    color={getCategoryInfo(selectedNote.category).color}
                   />
-                  <Text style={[
-                    styles.categoryText, 
-                    { color: getCategoryInfo(selectedNote.category).color }
-                  ]}>
+                  <Text
+                    style={[
+                      styles.categoryText,
+                      { color: getCategoryInfo(selectedNote.category).color },
+                    ]}
+                  >
                     {getCategoryInfo(selectedNote.category).label}
                   </Text>
                 </View>
@@ -535,30 +700,71 @@ export default function NotesScreen() {
 
               <Text style={styles.detailText}>{selectedNote.text_content}</Text>
 
+              {/* Advanced scheduling details */}
+              {selectedNote.category === 'zadania' && (
+                <View style={styles.detailScheduleSection}>
+                  {selectedNote.scheduled_time && (
+                    <View style={styles.detailScheduleRow}>
+                      <Ionicons name="time-outline" size={16} color="#3B82F6" />
+                      <Text style={styles.detailScheduleLabel}>Godzina:</Text>
+                      <Text style={styles.detailScheduleValue}>{selectedNote.scheduled_time}</Text>
+                    </View>
+                  )}
+                  {selectedNote.scheduled_date && (
+                    <View style={styles.detailScheduleRow}>
+                      <Ionicons name="calendar-outline" size={16} color="#3B82F6" />
+                      <Text style={styles.detailScheduleLabel}>Data:</Text>
+                      <Text style={styles.detailScheduleValue}>{selectedNote.scheduled_date}</Text>
+                    </View>
+                  )}
+                  {selectedNote.is_recurring && selectedNote.recurrence_pattern === 'custom' && selectedNote.recurrence_days?.length > 0 && (
+                    <View style={styles.detailScheduleRow}>
+                      <Ionicons name="calendar-number-outline" size={16} color="#8B5CF6" />
+                      <Text style={styles.detailScheduleLabel}>Dni:</Text>
+                      <Text style={styles.detailScheduleValue}>
+                        {getDaysLabel(selectedNote.recurrence_days)}
+                      </Text>
+                    </View>
+                  )}
+                  {selectedNote.recurrence_end_date && (
+                    <View style={styles.detailScheduleRow}>
+                      <Ionicons name="flag-outline" size={16} color="#EF4444" />
+                      <Text style={styles.detailScheduleLabel}>Koniec:</Text>
+                      <Text style={styles.detailScheduleValue}>
+                        {selectedNote.recurrence_end_date}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
+
               {selectedNote.category === 'zadania' && (
                 <TouchableOpacity
+                  data-testid="detail-toggle-complete"
                   style={[
                     styles.completeButton,
-                    selectedNote.is_completed && styles.completeButtonDone
+                    selectedNote.is_completed && styles.completeButtonDone,
                   ]}
                   onPress={() => {
                     toggleComplete(selectedNote.id, selectedNote.is_completed);
                     setSelectedNote({
                       ...selectedNote,
-                      is_completed: !selectedNote.is_completed
+                      is_completed: !selectedNote.is_completed,
                     });
                   }}
                 >
-                  <Ionicons 
-                    name={selectedNote.is_completed ? "checkbox" : "square-outline"} 
-                    size={22} 
-                    color={selectedNote.is_completed ? "#22C55E" : "#F59E0B"} 
+                  <Ionicons
+                    name={selectedNote.is_completed ? 'checkbox' : 'square-outline'}
+                    size={22}
+                    color={selectedNote.is_completed ? '#22C55E' : '#F59E0B'}
                   />
-                  <Text style={[
-                    styles.completeButtonText,
-                    selectedNote.is_completed && styles.completeButtonTextDone
-                  ]}>
-                    {selectedNote.is_completed ? "Wykonane" : "Oznacz jako wykonane"}
+                  <Text
+                    style={[
+                      styles.completeButtonText,
+                      selectedNote.is_completed && styles.completeButtonTextDone,
+                    ]}
+                  >
+                    {selectedNote.is_completed ? 'Wykonane' : 'Oznacz jako wykonane'}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -646,6 +852,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 6,
     gap: 8,
+    flexWrap: 'wrap',
   },
   categoryBadge: {
     flexDirection: 'row',
@@ -661,6 +868,20 @@ const styles = StyleSheet.create({
   },
   recurringBadge: {
     padding: 4,
+  },
+  timeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E3A5F',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    gap: 3,
+  },
+  timeText: {
+    color: '#60A5FA',
+    fontSize: 11,
+    fontWeight: '600',
   },
   noteDate: {
     color: '#6B7280',
@@ -682,10 +903,21 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     color: '#6B7280',
   },
+  recurrenceInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 4,
+    flexWrap: 'wrap',
+  },
   recurrenceInfo: {
     color: '#8B5CF6',
     fontSize: 12,
-    marginTop: 6,
+  },
+  recurrenceEndInfo: {
+    color: '#9CA3AF',
+    fontSize: 11,
+    marginLeft: 4,
   },
   emptyState: {
     alignItems: 'center',
@@ -758,6 +990,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 10,
   },
+  fieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 0,
+  },
   categoryButtons: {
     flexDirection: 'row',
     gap: 12,
@@ -798,6 +1036,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#374151',
   },
+  helperText: {
+    color: '#6B7280',
+    fontSize: 12,
+    marginTop: 6,
+    marginLeft: 4,
+  },
   recurringHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -829,6 +1073,33 @@ const styles = StyleSheet.create({
     color: '#8B5CF6',
     fontWeight: '500',
   },
+  daysRow: {
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'space-between',
+  },
+  dayChip: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#1F2937',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#374151',
+  },
+  dayChipActive: {
+    backgroundColor: '#8B5CF620',
+    borderColor: '#8B5CF6',
+  },
+  dayChipText: {
+    color: '#9CA3AF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  dayChipTextActive: {
+    color: '#8B5CF6',
+  },
   infoBox: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -836,6 +1107,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     gap: 10,
+    marginBottom: 20,
   },
   infoText: {
     flex: 1,
@@ -868,6 +1140,27 @@ const styles = StyleSheet.create({
     color: '#D1D5DB',
     fontSize: 16,
     lineHeight: 26,
+  },
+  detailScheduleSection: {
+    backgroundColor: '#1F2937',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 20,
+    gap: 10,
+  },
+  detailScheduleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  detailScheduleLabel: {
+    color: '#9CA3AF',
+    fontSize: 14,
+  },
+  detailScheduleValue: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
   },
   completeButton: {
     flexDirection: 'row',
