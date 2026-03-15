@@ -72,6 +72,11 @@ class NoteCreate(BaseModel):
     tags: List[str] = []
     mood_date: Optional[str] = None
     category: str = "przemyslenia"  # "zadania" or "przemyslenia"
+    # Recurring task fields
+    is_recurring: bool = False
+    recurrence_pattern: Optional[str] = None  # "daily", "weekdays", "weekly", "monthly"
+    recurrence_end_date: Optional[str] = None
+    scheduled_date: Optional[str] = None  # For tasks scheduled for specific date
 
 class Note(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -83,6 +88,16 @@ class Note(BaseModel):
     tags: List[str] = []
     mood_date: Optional[str] = None
     category: str = "przemyslenia"  # "zadania" or "przemyslenia"
+    # Completion status
+    is_completed: bool = False
+    completed_at: Optional[datetime] = None
+    # Recurring task fields
+    is_recurring: bool = False
+    recurrence_pattern: Optional[str] = None  # "daily", "weekdays", "weekly", "monthly"
+    recurrence_end_date: Optional[str] = None
+    parent_task_id: Optional[str] = None  # For instances generated from recurring tasks
+    scheduled_date: Optional[str] = None  # Date this task is scheduled for
+    # AI fields
     ai_summary: Optional[str] = None
     ai_keywords: List[str] = []
     ai_suggested_reminder: Optional[str] = None
