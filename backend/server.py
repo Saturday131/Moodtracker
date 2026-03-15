@@ -989,6 +989,319 @@ async def mark_reminder_sent(note_id: str):
     )
     return {"message": "Reminder marked as sent"}
 
+# Task completion and recurring tasks endpoints
+@api_router.put("/tasks/{task_id}/complete")
+async def complete_task(task_id: str):
+    """Mark a task as completed"""
+    task = await db.notes.find_one({"id": task_id, "category": "zadania"})
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    await db.notes.update_one(
+        {"id": task_id},
+        {"$set": {"is_completed": True, "completed_at": datetime.utcnow(), "updated_at": datetime.utcnow()}}
+    )
+    
+    updated = await db.notes.find_one({"id": task_id})
+    return Note(**updated)
+
+@api_router.put("/tasks/{task_id}/uncomplete")
+async def uncomplete_task(task_id: str):
+    """Mark a task as not completed"""
+    task = await db.notes.find_one({"id": task_id, "category": "zadania"})
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    await db.notes.update_one(
+        {"id": task_id},
+        {"$set": {"is_completed": False, "completed_at": None, "updated_at": datetime.utcnow()}}
+    )
+    
+    updated = await db.notes.find_one({"id": task_id})
+    return Note(**updated)
+
+@api_router.get("/tasks/for-date/{date}")
+async def get_tasks_for_date(date: str):
+    """Get all tasks for a specific date, including recurring task instances"""
+    # Get tasks scheduled for this date
+    scheduled_tasks = await db.notes.find({
+        "category": "zadania",
+        "scheduled_date": date
+    }).to_list(100)
+    
+    # Get recurring tasks that should appear on this date
+    target_date = datetime.strptime(date, "%Y-%m-%d")
+    day_of_week = target_date.weekday()  # 0=Monday, 6=Sunday
+    
+    recurring_tasks = await db.notes.find({
+        "category": "zadania",
+        "is_recurring": True,
+        "$or": [
+            {"recurrence_end_date": {"$exists": False}},
+            {"recurrence_end_date": None},
+            {"recurrence_end_date": {"$gte": date}}
+        ]
+    }).to_list(100)
+    
+    result_tasks = []
+    
+    # Add scheduled tasks
+    for task in scheduled_tasks:
+        if "_id" in task:
+            del task["_id"]
+        result_tasks.append(task)
+    
+    # Check recurring tasks
+    for task in recurring_tasks:
+        task_created = task.get("created_at", datetime.utcnow())
+        if isinstance(task_created, str):
+            task_created = datetime.fromisoformat(task_created.replace("Z", "+00:00"))
+        
+        # Skip if task was created after target date
+        if task_created.date() > target_date.date():
+            continue
+        
+        pattern = task.get("recurrence_pattern", "daily")
+        should_include = False
+        
+        if pattern == "daily":
+            should_include = True
+        elif pattern == "weekdays":
+            should_include = day_of_week < 5  # Monday-Friday
+        elif pattern == "weekly":
+            # Same day of week as created
+            should_include = task_created.weekday() == day_of_week
+        elif pattern == "monthly":
+            # Same day of month
+            should_include = task_created.day == target_date.day
+        
+        if should_include:
+            # Check if instance already exists for this date
+            existing = await db.notes.find_one({
+                "parent_task_id": task.get("id"),
+                "scheduled_date": date
+            })
+            
+            if existing:
+                if "_id" in existing:
+                    del existing["_id"]
+                result_tasks.append(existing)
+            else:
+                # Create virtual instance (not saved yet)
+                instance = task.copy()
+                if "_id" in instance:
+                    del instance["_id"]
+                instance["id"] = f"{task.get('id')}_{date}"
+                instance["scheduled_date"] = date
+                instance["parent_task_id"] = task.get("id")
+                instance["is_completed"] = False
+                instance["completed_at"] = None
+                result_tasks.append(instance)
+    
+    return result_tasks
+
+@api_router.post("/tasks/generate-instances")
+async def generate_recurring_instances(days_ahead: int = 7):
+    """Generate task instances for recurring tasks for the next N days"""
+    today = datetime.utcnow().date()
+    generated = 0
+    
+    recurring_tasks = await db.notes.find({
+        "category": "zadania",
+        "is_recurring": True
+    }).to_list(100)
+    
+    for task in recurring_tasks:
+        pattern = task.get("recurrence_pattern", "daily")
+        end_date_str = task.get("recurrence_end_date")
+        task_created = task.get("created_at", datetime.utcnow())
+        
+        if isinstance(task_created, str):
+            task_created = datetime.fromisoformat(task_created.replace("Z", "+00:00"))
+        
+        for day_offset in range(days_ahead):
+            target_date = today + timedelta(days=day_offset)
+            date_str = target_date.isoformat()
+            
+            # Check end date
+            if end_date_str and date_str > end_date_str:
+                continue
+            
+            # Check if task was created before target date
+            if task_created.date() > target_date:
+                continue
+            
+            # Check pattern
+            day_of_week = target_date.weekday()
+            should_generate = False
+            
+            if pattern == "daily":
+                should_generate = True
+            elif pattern == "weekdays":
+                should_generate = day_of_week < 5
+            elif pattern == "weekly":
+                should_generate = task_created.weekday() == day_of_week
+            elif pattern == "monthly":
+                should_generate = task_created.day == target_date.day
+            
+            if should_generate:
+                # Check if instance already exists
+                existing = await db.notes.find_one({
+                    "parent_task_id": task.get("id"),
+                    "scheduled_date": date_str
+                })
+                
+                if not existing:
+                    # Create instance
+                    instance = Note(
+                        title=task.get("title"),
+                        text_content=task.get("text_content"),
+                        category="zadania",
+                        scheduled_date=date_str,
+                        parent_task_id=task.get("id"),
+                        is_completed=False,
+                        is_recurring=False,  # Instance is not recurring itself
+                        tags=task.get("tags", [])
+                    )
+                    await db.notes.insert_one(instance.dict())
+                    generated += 1
+    
+    return {"message": f"Generated {generated} task instances", "days_ahead": days_ahead}
+
+class ChatTaskModification(BaseModel):
+    user_message: str
+    session_id: Optional[str] = None
+
+@api_router.post("/tasks/chat-modify")
+async def modify_tasks_via_chat(input: ChatTaskModification):
+    """Allow AI to modify tasks based on user's natural language request"""
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(status_code=500, detail="AI not configured")
+    
+    # Get all tasks
+    all_tasks = await db.notes.find({"category": "zadania"}).sort("created_at", -1).to_list(100)
+    
+    tasks_context = "AKTUALNE ZADANIA:\n"
+    for task in all_tasks:
+        status = "✓ wykonane" if task.get("is_completed") else "○ do zrobienia"
+        recurring = f" (powtarza się: {task.get('recurrence_pattern')})" if task.get("is_recurring") else ""
+        scheduled = f" [zaplanowane: {task.get('scheduled_date')}]" if task.get("scheduled_date") else ""
+        tasks_context += f"- ID:{task.get('id')[:8]} | {status} | {task.get('title', task.get('text_content', '')[:30])}{recurring}{scheduled}\n"
+    
+    try:
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"task-modify-{uuid.uuid4()}",
+            system_message=f"""Jesteś asystentem zadań. Użytkownik chce zmodyfikować swoje zadania.
+
+{tasks_context}
+
+Na podstawie prośby użytkownika, określ jakie operacje wykonać. Odpowiedz w formacie JSON:
+{{
+    "operations": [
+        {{"action": "create", "title": "...", "text_content": "...", "is_recurring": false, "recurrence_pattern": null, "scheduled_date": "YYYY-MM-DD"}},
+        {{"action": "update", "task_id": "...", "title": "...", "text_content": "...", "scheduled_date": "..."}},
+        {{"action": "delete", "task_id": "..."}},
+        {{"action": "complete", "task_id": "..."}},
+        {{"action": "set_recurring", "task_id": "...", "recurrence_pattern": "daily|weekdays|weekly|monthly", "recurrence_end_date": "YYYY-MM-DD lub null"}}
+    ],
+    "response": "Krótka odpowiedź dla użytkownika po polsku co zostało zmienione"
+}}
+
+Wzorce powtarzalności:
+- "daily" - codziennie
+- "weekdays" - dni robocze (pon-pt)  
+- "weekly" - raz w tygodniu
+- "monthly" - raz w miesiącu
+
+Dzisiejsza data: {datetime.utcnow().date().isoformat()}
+"""
+        ).with_model("openai", "gpt-4o")
+        
+        response = await chat.send_message(UserMessage(text=input.user_message))
+        
+        # Parse response
+        json_str = response
+        if "```json" in response:
+            json_str = response.split("```json")[1].split("```")[0]
+        elif "```" in response:
+            json_str = response.split("```")[1].split("```")[0]
+        
+        result = json.loads(json_str.strip())
+        operations = result.get("operations", [])
+        executed = []
+        
+        for op in operations:
+            action = op.get("action")
+            
+            if action == "create":
+                new_task = Note(
+                    title=op.get("title"),
+                    text_content=op.get("text_content"),
+                    category="zadania",
+                    is_recurring=op.get("is_recurring", False),
+                    recurrence_pattern=op.get("recurrence_pattern"),
+                    scheduled_date=op.get("scheduled_date")
+                )
+                await db.notes.insert_one(new_task.dict())
+                executed.append(f"Utworzono: {op.get('title')}")
+            
+            elif action == "update":
+                task_id = op.get("task_id")
+                update_data = {"updated_at": datetime.utcnow()}
+                if op.get("title"):
+                    update_data["title"] = op.get("title")
+                if op.get("text_content"):
+                    update_data["text_content"] = op.get("text_content")
+                if op.get("scheduled_date"):
+                    update_data["scheduled_date"] = op.get("scheduled_date")
+                
+                await db.notes.update_one({"id": {"$regex": f"^{task_id}"}}, {"$set": update_data})
+                executed.append(f"Zaktualizowano zadanie")
+            
+            elif action == "delete":
+                task_id = op.get("task_id")
+                await db.notes.delete_one({"id": {"$regex": f"^{task_id}"}})
+                executed.append(f"Usunięto zadanie")
+            
+            elif action == "complete":
+                task_id = op.get("task_id")
+                await db.notes.update_one(
+                    {"id": {"$regex": f"^{task_id}"}},
+                    {"$set": {"is_completed": True, "completed_at": datetime.utcnow()}}
+                )
+                executed.append(f"Oznaczono jako wykonane")
+            
+            elif action == "set_recurring":
+                task_id = op.get("task_id")
+                await db.notes.update_one(
+                    {"id": {"$regex": f"^{task_id}"}},
+                    {"$set": {
+                        "is_recurring": True,
+                        "recurrence_pattern": op.get("recurrence_pattern"),
+                        "recurrence_end_date": op.get("recurrence_end_date"),
+                        "updated_at": datetime.utcnow()
+                    }}
+                )
+                executed.append(f"Ustawiono powtarzanie: {op.get('recurrence_pattern')}")
+        
+        return {
+            "success": True,
+            "operations_executed": executed,
+            "ai_response": result.get("response", "Zadania zostały zaktualizowane."),
+            "raw_operations": operations
+        }
+        
+    except json.JSONDecodeError as e:
+        return {
+            "success": False,
+            "error": "Nie udało się przetworzyć odpowiedzi AI",
+            "ai_response": response if 'response' in dir() else str(e)
+        }
+    except Exception as e:
+        logging.error(f"Error modifying tasks: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @api_router.get("/notes/summary/daily")
 async def get_daily_notes_summary():
     """Get AI summary of today's notes"""
