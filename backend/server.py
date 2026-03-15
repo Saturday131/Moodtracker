@@ -1447,23 +1447,6 @@ PRZYKŁADY:
     except Exception as e:
         logging.error(f"Error modifying tasks: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-        
-        return {
-            "success": True,
-            "operations_executed": executed,
-            "ai_response": result.get("response", "Zadania zostały zaktualizowane."),
-            "raw_operations": operations
-        }
-        
-    except json.JSONDecodeError as e:
-        return {
-            "success": False,
-            "error": "Nie udało się przetworzyć odpowiedzi AI",
-            "ai_response": response if 'response' in dir() else str(e)
-        }
-    except Exception as e:
-        logging.error(f"Error modifying tasks: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/notes/summary/daily")
 async def get_daily_notes_summary():
