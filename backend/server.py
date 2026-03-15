@@ -71,6 +71,7 @@ class NoteCreate(BaseModel):
     image_base64: Optional[str] = None
     tags: List[str] = []
     mood_date: Optional[str] = None
+    category: str = "przemyslenia"  # "zadania" or "przemyslenia"
 
 class Note(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -81,6 +82,7 @@ class Note(BaseModel):
     image_base64: Optional[str] = None
     tags: List[str] = []
     mood_date: Optional[str] = None
+    category: str = "przemyslenia"  # "zadania" or "przemyslenia"
     ai_summary: Optional[str] = None
     ai_keywords: List[str] = []
     ai_suggested_reminder: Optional[str] = None
