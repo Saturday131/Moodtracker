@@ -883,10 +883,10 @@ async def get_notes_library(
     
     notes = await db.notes.find(query).sort(sort_field, sort_dir).to_list(200)
     
-    # Get all unique tags
-    all_notes = await db.notes.find({}).to_list(1000)
+    # Get all unique tags - optimized with projection
+    all_notes_tags = await db.notes.find({}, {"tags": 1, "ai_keywords": 1}).to_list(1000)
     all_tags = set()
-    for note in all_notes:
+    for note in all_notes_tags:
         all_tags.update(note.get("tags", []))
         all_tags.update(note.get("ai_keywords", []))
     
