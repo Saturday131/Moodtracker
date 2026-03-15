@@ -48,11 +48,23 @@ interface Task {
   title: string | null;
   text_content: string | null;
   category: string;
+  is_completed: boolean;
+  is_recurring: boolean;
+  recurrence_pattern: string | null;
+  scheduled_date: string | null;
+  parent_task_id: string | null;
   created_at: string;
 }
 
 const WEEKDAYS = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'];
 const SCORE_COLORS = ['#EF4444', '#F97316', '#EAB308', '#84CC16', '#22C55E'];
+
+const RECURRENCE_LABELS: Record<string, string> = {
+  daily: 'Codziennie',
+  weekdays: 'Dni robocze',
+  weekly: 'Co tydzień',
+  monthly: 'Co miesiąc',
+};
 
 function calculateComposite(layers: MoodLayers): number {
   const weights = { overall: 0.3, energy: 0.2, stress: 0.2, productivity: 0.15, social: 0.15 };
@@ -75,6 +87,8 @@ export default function CalendarScreen() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [tasksForDay, setTasksForDay] = useState<Task[]>([]);
+  const [loadingTasks, setLoadingTasks] = useState(false);
 
   const fetchMoods = async () => {
     try {
@@ -97,7 +111,7 @@ export default function CalendarScreen() {
     }
   };
 
-  const fetchTasks = async () => {
+  const fetchAllTasks = async () => {
     try {
       const response = await fetch(`${API_URL}/api/notes/library?category=zadania`);
       if (response.ok) {
@@ -109,22 +123,49 @@ export default function CalendarScreen() {
     }
   };
 
+  const fetchTasksForDate = async (date: Date) => {
+    setLoadingTasks(true);
+    try {
+      const dateStr = format(date, 'yyyy-MM-dd');
+      const response = await fetch(`${API_URL}/api/tasks/for-date/${dateStr}`);
+      if (response.ok) {
+        const data = await response.json();
+        setTasksForDay(data);
+      }
+    } catch (error) {
+      console.error('Error fetching tasks for date:', error);
+      // Fallback to filtering from all tasks
+      const dateStr = format(date, 'yyyy-MM-dd');
+      const filtered = tasks.filter(task => {
+        const taskDate = task.scheduled_date || format(new Date(task.created_at), 'yyyy-MM-dd');
+        return taskDate === dateStr;
+      });
+      setTasksForDay(filtered);
+    } finally {
+      setLoadingTasks(false);
+    }
+  };
+
   useEffect(() => {
     fetchMoods();
-    fetchTasks();
+    fetchAllTasks();
   }, [currentMonth]);
+
+  useEffect(() => {
+    fetchTasksForDate(selectedDate);
+  }, [selectedDate, tasks]);
 
   const getMoodsForDate = (date: Date): MoodEntry[] => {
     const dateStr = format(date, 'yyyy-MM-dd');
     return moods.filter(m => m.date === dateStr);
   };
 
-  const getTasksForDate = (date: Date): Task[] => {
+  const hasTasksForDate = (date: Date): boolean => {
     const dateStr = format(date, 'yyyy-MM-dd');
-    return tasks.filter(task => {
-      const taskDate = format(new Date(task.created_at), 'yyyy-MM-dd');
+    return tasks.some(task => {
+      const taskDate = task.scheduled_date || format(new Date(task.created_at), 'yyyy-MM-dd');
       return taskDate === dateStr;
-    });
+    }) || tasks.some(task => task.is_recurring);
   };
 
   const getDayComposite = (dayMoods: MoodEntry[]): number | null => {
@@ -135,6 +176,25 @@ export default function CalendarScreen() {
 
   const handleDayPress = (date: Date) => {
     setSelectedDate(date);
+  };
+
+  const toggleTaskComplete = async (taskId: string, isCompleted: boolean) => {
+    try {
+      const endpoint = isCompleted ? 'uncomplete' : 'complete';
+      const response = await fetch(`${API_URL}/api/tasks/${taskId}/${endpoint}`, {
+        method: 'PUT',
+      });
+      
+      if (response.ok) {
+        // Refresh tasks
+        fetchTasksForDate(selectedDate);
+        fetchAllTasks();
+      } else {
+        Alert.alert('Błąd', 'Nie udało się zaktualizować zadania');
+      }
+    } catch (error) {
+      Alert.alert('Błąd', 'Nie udało się połączyć z serwerem');
+    }
   };
 
   const deleteTask = async (taskId: string) => {
@@ -149,7 +209,8 @@ export default function CalendarScreen() {
           onPress: async () => {
             try {
               await fetch(`${API_URL}/api/notes/${taskId}`, { method: 'DELETE' });
-              fetchTasks();
+              fetchTasksForDate(selectedDate);
+              fetchAllTasks();
             } catch (error) {
               Alert.alert('Błąd', 'Nie udało się usunąć zadania');
             }
@@ -181,12 +242,11 @@ export default function CalendarScreen() {
         <View style={styles.daysContainer}>
           {days.map((day, index) => {
             const dayMoods = getMoodsForDate(day);
-            const dayTasks = getTasksForDate(day);
+            const hasTasks = hasTasksForDate(day);
             const isCurrentMonth = isSameMonth(day, currentMonth);
             const isToday = isSameDay(day, today);
             const isSelected = isSameDay(day, selectedDate);
             const composite = getDayComposite(dayMoods);
-            const hasTasks = dayTasks.length > 0;
 
             return (
               <TouchableOpacity
@@ -229,7 +289,6 @@ export default function CalendarScreen() {
   };
 
   const selectedDateStr = format(selectedDate, 'EEEE, d MMMM', { locale: pl });
-  const tasksForSelectedDate = getTasksForDate(selectedDate);
   const moodsForSelectedDate = getMoodsForDate(selectedDate);
   const selectedComposite = getDayComposite(moodsForSelectedDate);
 
@@ -291,10 +350,12 @@ export default function CalendarScreen() {
             <View style={styles.tasksSectionHeader}>
               <Ionicons name="checkbox-outline" size={20} color="#F59E0B" />
               <Text style={styles.tasksSectionTitle}>Zadania</Text>
-              <Text style={styles.tasksCount}>({tasksForSelectedDate.length})</Text>
+              <Text style={styles.tasksCount}>({tasksForDay.length})</Text>
             </View>
 
-            {tasksForSelectedDate.length === 0 ? (
+            {loadingTasks ? (
+              <ActivityIndicator size="small" color="#6366F1" style={{ paddingVertical: 20 }} />
+            ) : tasksForDay.length === 0 ? (
               <View style={styles.noTasksContainer}>
                 <Ionicons name="checkmark-done-outline" size={40} color="#4B5563" />
                 <Text style={styles.noTasksText}>Brak zadań na ten dzień</Text>
@@ -308,23 +369,49 @@ export default function CalendarScreen() {
               </View>
             ) : (
               <View style={styles.tasksList}>
-                {tasksForSelectedDate.map((task) => (
-                  <View key={task.id} style={styles.taskCard}>
+                {tasksForDay.map((task) => (
+                  <View key={task.id} style={[
+                    styles.taskCard,
+                    task.is_completed && styles.taskCardCompleted
+                  ]}>
+                    <TouchableOpacity 
+                      style={styles.taskCheckbox}
+                      onPress={() => toggleTaskComplete(task.id, task.is_completed)}
+                    >
+                      <Ionicons 
+                        name={task.is_completed ? "checkbox" : "square-outline"} 
+                        size={24} 
+                        color={task.is_completed ? "#22C55E" : "#F59E0B"} 
+                      />
+                    </TouchableOpacity>
+                    
                     <View style={styles.taskContent}>
-                      <View style={styles.taskCheckbox}>
-                        <Ionicons name="square-outline" size={22} color="#F59E0B" />
-                      </View>
                       <View style={styles.taskTextContainer}>
                         {task.title && (
-                          <Text style={styles.taskTitle}>{task.title}</Text>
+                          <Text style={[
+                            styles.taskTitle,
+                            task.is_completed && styles.taskTitleCompleted
+                          ]}>{task.title}</Text>
                         )}
                         {task.text_content && (
-                          <Text style={styles.taskDescription} numberOfLines={2}>
+                          <Text style={[
+                            styles.taskDescription,
+                            task.is_completed && styles.taskDescriptionCompleted
+                          ]} numberOfLines={2}>
                             {task.text_content}
                           </Text>
                         )}
+                        {task.is_recurring && task.recurrence_pattern && (
+                          <View style={styles.recurringBadge}>
+                            <Ionicons name="repeat" size={12} color="#8B5CF6" />
+                            <Text style={styles.recurringText}>
+                              {RECURRENCE_LABELS[task.recurrence_pattern] || task.recurrence_pattern}
+                            </Text>
+                          </View>
+                        )}
                       </View>
                     </View>
+                    
                     <TouchableOpacity 
                       style={styles.deleteTaskButton}
                       onPress={() => deleteTask(task.id)}
@@ -337,30 +424,13 @@ export default function CalendarScreen() {
             )}
           </View>
 
-          {/* All Tasks Preview */}
-          {tasks.length > 0 && tasksForSelectedDate.length === 0 && (
-            <View style={styles.allTasksPreview}>
-              <Text style={styles.allTasksTitle}>📋 Wszystkie zadania ({tasks.length})</Text>
-              {tasks.slice(0, 3).map((task) => (
-                <View key={task.id} style={styles.allTasksItem}>
-                  <View style={styles.allTasksDot} />
-                  <Text style={styles.allTasksText} numberOfLines={1}>
-                    {task.title || task.text_content?.slice(0, 50)}
-                  </Text>
-                  <Text style={styles.allTasksDate}>
-                    {format(new Date(task.created_at), 'd.MM', { locale: pl })}
-                  </Text>
-                </View>
-              ))}
-              <TouchableOpacity 
-                style={styles.viewAllButton}
-                onPress={() => router.push('/notes')}
-              >
-                <Text style={styles.viewAllButtonText}>Zobacz wszystkie</Text>
-                <Ionicons name="arrow-forward" size={16} color="#6366F1" />
-              </TouchableOpacity>
-            </View>
-          )}
+          {/* Chat tip for task management */}
+          <View style={styles.tipCard}>
+            <Ionicons name="bulb-outline" size={18} color="#F59E0B" />
+            <Text style={styles.tipText}>
+              Możesz zarządzać zadaniami przez czat! Napisz np. "Dodaj codzienne zadanie: wyprowadź psa" lub "Przesuń spotkanie na piątek"
+            </Text>
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -561,14 +631,15 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
   },
-  taskContent: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+  taskCardCompleted: {
+    backgroundColor: '#1F2937',
+    opacity: 0.7,
   },
   taskCheckbox: {
     marginRight: 10,
-    marginTop: 2,
+  },
+  taskContent: {
+    flex: 1,
   },
   taskTextContainer: {
     flex: 1,
@@ -579,60 +650,48 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: 2,
   },
+  taskTitleCompleted: {
+    textDecorationLine: 'line-through',
+    color: '#6B7280',
+  },
   taskDescription: {
     color: '#9CA3AF',
     fontSize: 13,
     lineHeight: 18,
   },
+  taskDescriptionCompleted: {
+    textDecorationLine: 'line-through',
+    color: '#4B5563',
+  },
+  recurringBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 4,
+  },
+  recurringText: {
+    color: '#8B5CF6',
+    fontSize: 11,
+    fontWeight: '500',
+  },
   deleteTaskButton: {
     padding: 8,
   },
-  allTasksPreview: {
+  tipCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     backgroundColor: '#1F2937',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 12,
+    padding: 14,
     marginTop: 16,
-  },
-  allTasksTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#9CA3AF',
-    marginBottom: 12,
-  },
-  allTasksItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
     gap: 10,
+    borderWidth: 1,
+    borderColor: '#374151',
   },
-  allTasksDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#F59E0B',
-  },
-  allTasksText: {
+  tipText: {
     flex: 1,
-    color: '#D1D5DB',
-    fontSize: 14,
-  },
-  allTasksDate: {
-    color: '#6B7280',
-    fontSize: 12,
-  },
-  viewAllButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#374151',
-    gap: 6,
-  },
-  viewAllButtonText: {
-    color: '#6366F1',
-    fontSize: 14,
-    fontWeight: '500',
+    color: '#9CA3AF',
+    fontSize: 13,
+    lineHeight: 20,
   },
 });
