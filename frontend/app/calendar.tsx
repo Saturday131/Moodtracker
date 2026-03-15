@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Modal,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,12 +43,15 @@ interface MoodEntry {
   note: string | null;
 }
 
+interface Task {
+  id: string;
+  title: string | null;
+  text_content: string | null;
+  category: string;
+  created_at: string;
+}
+
 const WEEKDAYS = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'];
-const TIME_LABELS = {
-  morning: { emoji: '🌅', label: 'Rano' },
-  midday: { emoji: '☀️', label: 'Południe' },
-  evening: { emoji: '🌙', label: 'Wieczór' },
-};
 const SCORE_COLORS = ['#EF4444', '#F97316', '#EAB308', '#84CC16', '#22C55E'];
 
 function calculateComposite(layers: MoodLayers): number {
@@ -65,22 +68,13 @@ function getScoreColor(score: number): string {
   return SCORE_COLORS[index];
 }
 
-const LAYER_LABELS_PL: Record<string, string> = {
-  overall: 'Ogólny',
-  energy: 'Energia',
-  stress: 'Spokój',
-  productivity: 'Produktywność',
-  social: 'Społeczny',
-};
-
 export default function CalendarScreen() {
   const router = useRouter();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [moods, setMoods] = useState<MoodEntry[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [selectedMoods, setSelectedMoods] = useState<MoodEntry[]>([]);
-  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
   const fetchMoods = async () => {
     try {
@@ -103,13 +97,34 @@ export default function CalendarScreen() {
     }
   };
 
+  const fetchTasks = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/notes/library?category=zadania`);
+      if (response.ok) {
+        const data = await response.json();
+        setTasks(data.notes || []);
+      }
+    } catch (error) {
+      console.error('Error fetching tasks:', error);
+    }
+  };
+
   useEffect(() => {
     fetchMoods();
+    fetchTasks();
   }, [currentMonth]);
 
   const getMoodsForDate = (date: Date): MoodEntry[] => {
     const dateStr = format(date, 'yyyy-MM-dd');
     return moods.filter(m => m.date === dateStr);
+  };
+
+  const getTasksForDate = (date: Date): Task[] => {
+    const dateStr = format(date, 'yyyy-MM-dd');
+    return tasks.filter(task => {
+      const taskDate = format(new Date(task.created_at), 'yyyy-MM-dd');
+      return taskDate === dateStr;
+    });
   };
 
   const getDayComposite = (dayMoods: MoodEntry[]): number | null => {
@@ -119,12 +134,29 @@ export default function CalendarScreen() {
   };
 
   const handleDayPress = (date: Date) => {
-    const dayMoods = getMoodsForDate(date);
-    if (dayMoods.length > 0) {
-      setSelectedDate(format(date, 'yyyy-MM-dd'));
-      setSelectedMoods(dayMoods);
-      setModalVisible(true);
-    }
+    setSelectedDate(date);
+  };
+
+  const deleteTask = async (taskId: string) => {
+    Alert.alert(
+      'Usuń zadanie?',
+      'Ta operacja jest nieodwracalna',
+      [
+        { text: 'Anuluj', style: 'cancel' },
+        {
+          text: 'Usuń',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await fetch(`${API_URL}/api/notes/${taskId}`, { method: 'DELETE' });
+              fetchTasks();
+            } catch (error) {
+              Alert.alert('Błąd', 'Nie udało się usunąć zadania');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const renderCalendar = () => {
@@ -149,9 +181,12 @@ export default function CalendarScreen() {
         <View style={styles.daysContainer}>
           {days.map((day, index) => {
             const dayMoods = getMoodsForDate(day);
+            const dayTasks = getTasksForDate(day);
             const isCurrentMonth = isSameMonth(day, currentMonth);
             const isToday = isSameDay(day, today);
+            const isSelected = isSameDay(day, selectedDate);
             const composite = getDayComposite(dayMoods);
+            const hasTasks = dayTasks.length > 0;
 
             return (
               <TouchableOpacity
@@ -160,36 +195,29 @@ export default function CalendarScreen() {
                   styles.dayCell,
                   !isCurrentMonth && styles.otherMonthDay,
                   isToday && styles.todayCell,
+                  isSelected && styles.selectedCell,
                 ]}
                 onPress={() => handleDayPress(day)}
-                disabled={dayMoods.length === 0}
               >
                 <Text
                   style={[
                     styles.dayNumber,
                     !isCurrentMonth && styles.otherMonthText,
                     isToday && styles.todayText,
+                    isSelected && styles.selectedText,
                   ]}
                 >
                   {format(day, 'd')}
                 </Text>
                 
-                {isCurrentMonth && dayMoods.length > 0 && (
-                  <View style={styles.moodIndicators}>
-                    <View style={styles.timeSlots}>
-                      {['morning', 'midday', 'evening'].map((time) => {
-                        const timeMood = dayMoods.find(m => m.time_of_day === time);
-                        return (
-                          <View
-                            key={time}
-                            style={[
-                              styles.timeSlot,
-                              timeMood && { backgroundColor: getScoreColor(calculateComposite(timeMood.layers)) },
-                            ]}
-                          />
-                        );
-                      })}
-                    </View>
+                {isCurrentMonth && (
+                  <View style={styles.indicators}>
+                    {composite !== null && (
+                      <View style={[styles.moodDot, { backgroundColor: getScoreColor(composite) }]} />
+                    )}
+                    {hasTasks && (
+                      <View style={styles.taskDot} />
+                    )}
                   </View>
                 )}
               </TouchableOpacity>
@@ -200,58 +228,10 @@ export default function CalendarScreen() {
     );
   };
 
-  const renderLegend = () => (
-    <View style={styles.legend}>
-      <Text style={styles.legendTitle}>Kolory Wyników</Text>
-      <View style={styles.legendRow}>
-        {['Bardzo Niski', 'Niski', 'Średni', 'Dobry', 'Świetny'].map((label, i) => (
-          <View key={label} style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: SCORE_COLORS[i] }]} />
-            <Text style={styles.legendText}>{label}</Text>
-          </View>
-        ))}
-      </View>
-      <View style={styles.timeSlotLegend}>
-        <Text style={styles.legendSubtitle}>Pory dnia:</Text>
-        <View style={styles.timeSlotExample}>
-          <View style={[styles.timeSlot, { backgroundColor: '#22C55E' }]} />
-          <View style={[styles.timeSlot, { backgroundColor: '#84CC16' }]} />
-          <View style={[styles.timeSlot, { backgroundColor: '#EAB308' }]} />
-        </View>
-        <Text style={styles.legendHint}>Rano | Południe | Wieczór</Text>
-      </View>
-    </View>
-  );
-
-  const renderStats = () => {
-    const totalEntries = moods.length;
-    const uniqueDays = new Set(moods.map(m => m.date)).size;
-    const avgComposite = totalEntries > 0
-      ? moods.reduce((sum, m) => sum + calculateComposite(m.layers), 0) / totalEntries
-      : 0;
-
-    return (
-      <View style={styles.statsCard}>
-        <Text style={styles.statsTitle}>Ten Miesiąc</Text>
-        <View style={styles.statsRow}>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{uniqueDays}</Text>
-            <Text style={styles.statLabel}>Dni</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{totalEntries}</Text>
-            <Text style={styles.statLabel}>Wpisy</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={[styles.statValue, { color: avgComposite > 0 ? getScoreColor(avgComposite) : '#9CA3AF' }]}>
-              {avgComposite > 0 ? avgComposite.toFixed(1) : '-'}
-            </Text>
-            <Text style={styles.statLabel}>Średnia</Text>
-          </View>
-        </View>
-      </View>
-    );
-  };
+  const selectedDateStr = format(selectedDate, 'EEEE, d MMMM', { locale: pl });
+  const tasksForSelectedDate = getTasksForDate(selectedDate);
+  const moodsForSelectedDate = getMoodsForDate(selectedDate);
+  const selectedComposite = getDayComposite(moodsForSelectedDate);
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -266,6 +246,7 @@ export default function CalendarScreen() {
           <Ionicons name="chevron-forward" size={20} color="#6366F1" />
         </TouchableOpacity>
 
+        {/* Month Navigation */}
         <View style={styles.monthNavigation}>
           <TouchableOpacity onPress={() => setCurrentMonth(subMonths(currentMonth, 1))} style={styles.navButton}>
             <Ionicons name="chevron-back" size={28} color="#FFFFFF" />
@@ -287,85 +268,101 @@ export default function CalendarScreen() {
             <ActivityIndicator size="large" color="#6366F1" />
           </View>
         ) : (
-          <>
-            {renderCalendar()}
-            {renderLegend()}
-            {renderStats()}
-          </>
+          renderCalendar()
         )}
-      </ScrollView>
 
-      {/* Day Detail Modal */}
-      <Modal
-        visible={modalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setModalVisible(false)}
-        >
-          <View style={styles.modalContent}>
-            {selectedDate && (
-              <>
-                <Text style={styles.modalDate}>
-                  {format(new Date(selectedDate), 'EEEE, d MMMM yyyy', { locale: pl })}
-                </Text>
-                
-                {selectedMoods.map((mood) => (
-                  <View key={mood.id} style={styles.modalMoodCard}>
-                    <View style={styles.modalMoodHeader}>
-                      <Text style={styles.modalTimeEmoji}>
-                        {TIME_LABELS[mood.time_of_day as keyof typeof TIME_LABELS]?.emoji}
-                      </Text>
-                      <Text style={styles.modalTimeLabel}>
-                        {TIME_LABELS[mood.time_of_day as keyof typeof TIME_LABELS]?.label}
-                      </Text>
-                      <Text style={[styles.modalComposite, { color: getScoreColor(calculateComposite(mood.layers)) }]}>
-                        {calculateComposite(mood.layers).toFixed(1)}
-                      </Text>
-                    </View>
-                    
-                    <View style={styles.modalLayers}>
-                      {Object.entries(mood.layers).map(([key, value]) => (
-                        <View key={key} style={styles.modalLayerRow}>
-                          <Text style={styles.modalLayerLabel}>
-                            {LAYER_LABELS_PL[key] || key}
-                          </Text>
-                          <View style={styles.modalLayerBar}>
-                            <View
-                              style={[
-                                styles.modalLayerFill,
-                                { width: `${(value as number) * 20}%`, backgroundColor: getScoreColor(value as number) },
-                              ]}
-                            />
-                          </View>
-                          <Text style={styles.modalLayerValue}>{value}</Text>
-                        </View>
-                      ))}
-                    </View>
-                    
-                    {mood.note && (
-                      <View style={styles.modalNote}>
-                        <Text style={styles.modalNoteText}>{mood.note}</Text>
+        {/* Selected Day Info */}
+        <View style={styles.selectedDaySection}>
+          <Text style={styles.selectedDateTitle}>{selectedDateStr}</Text>
+          
+          {/* Mood Summary for Selected Day */}
+          {selectedComposite !== null && (
+            <View style={styles.moodSummaryCard}>
+              <Ionicons name="happy-outline" size={20} color={getScoreColor(selectedComposite)} />
+              <Text style={styles.moodSummaryText}>Nastrój:</Text>
+              <Text style={[styles.moodSummaryValue, { color: getScoreColor(selectedComposite) }]}>
+                {selectedComposite.toFixed(1)}/5
+              </Text>
+            </View>
+          )}
+
+          {/* Tasks Section */}
+          <View style={styles.tasksSection}>
+            <View style={styles.tasksSectionHeader}>
+              <Ionicons name="checkbox-outline" size={20} color="#F59E0B" />
+              <Text style={styles.tasksSectionTitle}>Zadania</Text>
+              <Text style={styles.tasksCount}>({tasksForSelectedDate.length})</Text>
+            </View>
+
+            {tasksForSelectedDate.length === 0 ? (
+              <View style={styles.noTasksContainer}>
+                <Ionicons name="checkmark-done-outline" size={40} color="#4B5563" />
+                <Text style={styles.noTasksText}>Brak zadań na ten dzień</Text>
+                <TouchableOpacity 
+                  style={styles.addTaskButton}
+                  onPress={() => router.push('/notes')}
+                >
+                  <Ionicons name="add" size={18} color="#6366F1" />
+                  <Text style={styles.addTaskButtonText}>Dodaj zadanie</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.tasksList}>
+                {tasksForSelectedDate.map((task) => (
+                  <View key={task.id} style={styles.taskCard}>
+                    <View style={styles.taskContent}>
+                      <View style={styles.taskCheckbox}>
+                        <Ionicons name="square-outline" size={22} color="#F59E0B" />
                       </View>
-                    )}
+                      <View style={styles.taskTextContainer}>
+                        {task.title && (
+                          <Text style={styles.taskTitle}>{task.title}</Text>
+                        )}
+                        {task.text_content && (
+                          <Text style={styles.taskDescription} numberOfLines={2}>
+                            {task.text_content}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                    <TouchableOpacity 
+                      style={styles.deleteTaskButton}
+                      onPress={() => deleteTask(task.id)}
+                    >
+                      <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                    </TouchableOpacity>
                   </View>
                 ))}
-                
-                <TouchableOpacity
-                  style={styles.modalCloseButton}
-                  onPress={() => setModalVisible(false)}
-                >
-                  <Text style={styles.modalCloseText}>Zamknij</Text>
-                </TouchableOpacity>
-              </>
+              </View>
             )}
           </View>
-        </TouchableOpacity>
-      </Modal>
+
+          {/* All Tasks Preview */}
+          {tasks.length > 0 && tasksForSelectedDate.length === 0 && (
+            <View style={styles.allTasksPreview}>
+              <Text style={styles.allTasksTitle}>📋 Wszystkie zadania ({tasks.length})</Text>
+              {tasks.slice(0, 3).map((task) => (
+                <View key={task.id} style={styles.allTasksItem}>
+                  <View style={styles.allTasksDot} />
+                  <Text style={styles.allTasksText} numberOfLines={1}>
+                    {task.title || task.text_content?.slice(0, 50)}
+                  </Text>
+                  <Text style={styles.allTasksDate}>
+                    {format(new Date(task.created_at), 'd.MM', { locale: pl })}
+                  </Text>
+                </View>
+              ))}
+              <TouchableOpacity 
+                style={styles.viewAllButton}
+                onPress={() => router.push('/notes')}
+              >
+                <Text style={styles.viewAllButtonText}>Zobacz wszystkie</Text>
+                <Ionicons name="arrow-forward" size={16} color="#6366F1" />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -410,7 +407,7 @@ const styles = StyleSheet.create({
     textTransform: 'capitalize',
   },
   loadingContainer: {
-    paddingVertical: 100,
+    paddingVertical: 60,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -437,20 +434,22 @@ const styles = StyleSheet.create({
   },
   dayCell: {
     width: '14.28%',
-    aspectRatio: 0.9,
-    justifyContent: 'flex-start',
+    aspectRatio: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 4,
+    borderRadius: 8,
   },
   otherMonthDay: {
     opacity: 0.3,
   },
   todayCell: {
     backgroundColor: '#374151',
-    borderRadius: 8,
+  },
+  selectedCell: {
+    backgroundColor: '#6366F1',
   },
   dayNumber: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#FFFFFF',
     fontWeight: '500',
   },
@@ -461,195 +460,179 @@ const styles = StyleSheet.create({
     color: '#6366F1',
     fontWeight: 'bold',
   },
-  moodIndicators: {
-    marginTop: 4,
-    alignItems: 'center',
+  selectedText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
   },
-  timeSlots: {
+  indicators: {
     flexDirection: 'row',
-    gap: 2,
+    gap: 3,
+    marginTop: 4,
   },
-  timeSlot: {
-    width: 10,
-    height: 10,
-    borderRadius: 2,
-    backgroundColor: '#374151',
+  moodDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
-  legend: {
+  taskDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#F59E0B',
+  },
+  selectedDaySection: {
     padding: 16,
-    marginTop: 8,
   },
-  legendTitle: {
-    fontSize: 14,
+  selectedDateTitle: {
+    fontSize: 18,
     fontWeight: '600',
-    color: '#9CA3AF',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  legendRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 4,
-  },
-  legendText: {
-    fontSize: 11,
-    color: '#9CA3AF',
-  },
-  timeSlotLegend: {
-    marginTop: 12,
-    alignItems: 'center',
-  },
-  legendSubtitle: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 6,
-  },
-  timeSlotExample: {
-    flexDirection: 'row',
-    gap: 2,
-  },
-  legendHint: {
-    fontSize: 10,
-    color: '#6B7280',
-    marginTop: 4,
-  },
-  statsCard: {
-    margin: 16,
-    backgroundColor: '#1F2937',
-    borderRadius: 16,
-    padding: 20,
-  },
-  statsTitle: {
-    fontSize: 14,
-    color: '#9CA3AF',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  statItem: {
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
     color: '#FFFFFF',
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    marginTop: 4,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: '#1F2937',
-    borderRadius: 20,
-    padding: 20,
-    width: '90%',
-    maxHeight: '80%',
-  },
-  modalDate: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
     textTransform: 'capitalize',
   },
-  modalMoodCard: {
-    backgroundColor: '#374151',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
-  },
-  modalMoodHeader: {
+  moodSummaryCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
-  },
-  modalTimeEmoji: {
-    fontSize: 24,
-    marginRight: 8,
-  },
-  modalTimeLabel: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  modalComposite: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  modalLayers: {
+    backgroundColor: '#1F2937',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 16,
     gap: 8,
   },
-  modalLayerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  modalLayerLabel: {
-    width: 90,
-    fontSize: 12,
+  moodSummaryText: {
     color: '#9CA3AF',
+    fontSize: 14,
   },
-  modalLayerBar: {
-    flex: 1,
-    height: 8,
-    backgroundColor: '#1F2937',
-    borderRadius: 4,
-    marginHorizontal: 8,
-  },
-  modalLayerFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  modalLayerValue: {
-    width: 20,
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    textAlign: 'right',
-  },
-  modalNote: {
-    marginTop: 12,
-    padding: 10,
-    backgroundColor: '#1F2937',
-    borderRadius: 8,
-  },
-  modalNoteText: {
-    fontSize: 13,
-    color: '#D1D5DB',
-    fontStyle: 'italic',
-  },
-  modalCloseButton: {
-    backgroundColor: '#6366F1',
-    borderRadius: 12,
-    padding: 14,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  modalCloseText: {
-    color: '#FFFFFF',
+  moodSummaryValue: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  tasksSection: {
+    backgroundColor: '#1F2937',
+    borderRadius: 16,
+    padding: 16,
+  },
+  tasksSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 8,
+  },
+  tasksSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  tasksCount: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  noTasksContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  noTasksText: {
+    color: '#6B7280',
+    fontSize: 14,
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  addTaskButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#374151',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    gap: 6,
+  },
+  addTaskButtonText: {
+    color: '#6366F1',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  tasksList: {
+    gap: 10,
+  },
+  taskCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#374151',
+    padding: 12,
+    borderRadius: 12,
+  },
+  taskContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  taskCheckbox: {
+    marginRight: 10,
+    marginTop: 2,
+  },
+  taskTextContainer: {
+    flex: 1,
+  },
+  taskTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  taskDescription: {
+    color: '#9CA3AF',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  deleteTaskButton: {
+    padding: 8,
+  },
+  allTasksPreview: {
+    backgroundColor: '#1F2937',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 16,
+  },
+  allTasksTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#9CA3AF',
+    marginBottom: 12,
+  },
+  allTasksItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    gap: 10,
+  },
+  allTasksDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#F59E0B',
+  },
+  allTasksText: {
+    flex: 1,
+    color: '#D1D5DB',
+    fontSize: 14,
+  },
+  allTasksDate: {
+    color: '#6B7280',
+    fontSize: 12,
+  },
+  viewAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#374151',
+    gap: 6,
+  },
+  viewAllButtonText: {
+    color: '#6366F1',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
