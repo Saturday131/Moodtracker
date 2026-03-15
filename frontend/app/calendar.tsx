@@ -256,6 +256,16 @@ export default function CalendarScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Trends Button */}
+        <TouchableOpacity 
+          style={styles.trendsButton}
+          onPress={() => router.push('/trends')}
+        >
+          <Ionicons name="analytics" size={20} color="#6366F1" />
+          <Text style={styles.trendsButtonText}>Zobacz Trendy i Analizy</Text>
+          <Ionicons name="chevron-forward" size={20} color="#6366F1" />
+        </TouchableOpacity>
+
         <View style={styles.monthNavigation}>
           <TouchableOpacity onPress={() => setCurrentMonth(subMonths(currentMonth, 1))} style={styles.navButton}>
             <Ionicons name="chevron-back" size={28} color="#FFFFFF" />
