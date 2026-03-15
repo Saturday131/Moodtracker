@@ -2,164 +2,180 @@
 <original_problem_statement>
 The user wants to build a full-stack mobile mood tracker app using Expo.
 
-**Initial MVP Requirements:**
-- Record daily moods with optional notes.
-- Use emojis for different moods.
-- View mood history in a calendar or graph view.
-- Export mood data.
+**Initial MVP &amp; Enhancements:**
+- Record daily moods (Morning, Midday, Evening) with a multi-layered scoring system.
+- View mood history in a calendar and graph view.
+- AI Chatbot (MoodBuddy) to analyze trends and answer questions.
+- Multimedia notes (text, voice, image).
+- Intelligent reminders and push notifications with daily/weekly summaries.
 
-**Feature Enhancements Added:**
-1.  **Advanced Tracking:** Allow three mood entries per day (Morning, Midday, Evening) with a multi-layered scoring system (e.g., Overall, Energy, Calm). Provide advanced analytics based on this data.
-2.  **AI Chatbot:** Implement a chatbot (MoodBuddy) that can analyze mood trends, answer user questions about their data, and provide a weekly summary via push notification.
-3.  **Multimedia Notes:** Add a feature to create notes in text, voice, or image format. The chatbot should analyze these notes, provide summaries, and use them to give more contextual reminders and insights.
-4.  **Intelligent Reminders:** Schedule reminders intelligently based on the content of the notes (both text and voice). These reminders should be sent via push notifications. The app should also feature a browsable library of all past notes.
+**Recent User-Driven Changes &amp; Current Requests:**
+- The app's UI has been fully translated into Polish.
+- The layout has been simplified: the Trends tab was removed and is now a button on the Calendar screen.
+- The notes system was overhauled:
+    - Notes are saved exactly as the user writes them, without AI modification.
+    - AI analysis is a separate, on-demand feature (e.g., daily summary).
+    - Notes are categorized as Zadania (Tasks) or Przemyślenia (Thoughts).
+- The Calendar screen was redesigned to show tasks for the selected day instead of stats.
+- **Task Management Enhancements:**
+    - Tasks can be marked as completed with a checkbox.
+    - Recurring tasks can be created.
+    - Tasks can be modified via chat commands.
+- **Current Request (In-Progress):** Implement an advanced task scheduling system with options for:
+    1.  Specific time of day for a task.
+    2.  An end date for recurring tasks.
+    3.  Recurring on specific days of the week (e.g., only Mon, Wed, Fri).
+    4.  Enhanced chatbot capabilities to modify these advanced task schedules directly in the calendar.
 
 </original_problem_statement>
-**User's preferred language**: English
+**User's preferred language**: Polish. The user has been communicating exclusively in Polish. The next agent MUST respond in Polish.
 
 **what currently exists?**
-A full-stack Expo/FastAPI mood tracker app.
-- **Frontend:** An Expo app with a tab-based navigation for:
-    - **Today:** Input mood for Morning/Midday/Evening using a multi-layer slider system.
-    - **Calendar:** View daily mood colors, with three slots per day.
-    - **Trends:** View analytics with charts, filterable by time, day, and mood layer.
-    - **Chat:** An AI chatbot (MoodBuddy) that provides personalized mood insights by analyzing mood data and user notes.
-    - **Notes:** A screen to view AI-summarized notes and stubs for adding new text/voice/image notes.
-- **Backend:** A FastAPI server with MongoDB, providing endpoints for all CRUD operations on moods and notes, as well as AI-powered endpoints for chat, note analysis, voice transcription, and generating summaries. It uses an  for background tasks.
+A full-stack Expo/FastAPI mood tracker app with a Polish UI.
+- **Frontend (Expo):** A tab-based app with screens for Today (mood entry &amp; AI summary), Calendar (mood/task view), Notes (categorized list), and Chat (AI interaction). A settings screen exists for user preferences but is accessed via a button, not a tab.
+- **Backend (FastAPI):** A server with MongoDB that manages moods, notes (including tasks), user settings, and AI context. It uses OpenAI models for chat and summary generation. A background scheduler () is in place. The backend supports basic and recurring tasks, AI-driven daily summaries, and a memory for the chatbot ( collection).
 
 **Last working item**:
--   Last item agent was working: Implementing intelligent reminder scheduling, voice-to-text transcription for notes, an enhanced notes library with push notifications, and a notes summary feature. The agent wrote the code for both backend () and frontend () and restarted the services but has not tested any of the new functionality.
+-   Last item agent was working: Implementing an advanced task scheduling system. The agent updated the backend data models ( in ) to include fields like , , and . It then began updating the  endpoint with new logic to handle these complex scheduling requests from the chatbot. The agent's last action was identifying a block of old, duplicated code within this endpoint that needs to be removed.
 -   Status: IN PROGRESS
 -   Agent Testing Done: N
 -   Which testing method agent to use? both
-    -   **Backend:** Use  to test the new and updated endpoints:
-        -    with a voice recording to test the full voice-to-text transcription and AI analysis pipeline.
-        -    to test the daily/weekly note summary generation.
-        -   Check backend logs for the  background task to see if it's running.
-    -   **Frontend:** Use the  tool to test the  screen:
-        -   Verify the UI for the new note library (Active/Archived tabs).
-        -   Test the audio recording functionality.
-        -   Test the push notification permission flow if possible.
+    -   **Backend:** Use  to test the updated  endpoint by sending complex requests (e.g., create a task every Mon, Wed until the end of the month at 5pm).
+    -   **Frontend:** The  screen needs a new UI to allow users to set these advanced options when creating a task. This will require UI implementation and then verification with the  tool.
 -   User Testing Done: N
 
 **All Pending/In progress Issue list**:
--   Issue 1: The latest feature, Intelligent Reminders and Voice-to-Text, is completely untested. (P0)
+-   Issue 1: The backend  file contains duplicated code after a partial refactor of the  endpoint. (P0)
 
 Issues Detail:
--   **Issue 1: Test the newly implemented Intelligent Reminders and Voice-to-Text feature**
-    -   **Attempted fixes:** None, implementation was just completed.
+-   **Issue 1: Duplicated code in  endpoint**
+    -   **Attempted fixes:** None. The agent just identified the issue.
     -   **Next debug checklist:**
-        1.  **Backend Test:** Execute a  command to  a mock audio file to the  endpoint. Verify that the backend successfully transcribes the audio, analyzes the text, and stores the note correctly in the database.
-        2.  **Backend Test:** Execute a  command to . Verify that it returns a correctly formatted AI-generated summary of notes.
-        3.  **Backend Check:** Inspect the backend logs () to confirm that the  job for sending reminders has been initialized without errors.
-        4.  **Frontend Test:** On the  screen (), test the Record Audio functionality. Confirm that a recording can be started and stopped.
-        5.  **Frontend Test:** Test the push notification flow by calling  and  from the  component. Check console logs for the push token and any errors.
-    -   **Why fix this issue and what will be achieved with the fix?** This will complete the latest user request, enabling advanced note-taking with voice, AI analysis, and smart push notification reminders.
+        1.  View the file  around lines 1390-1500.
+        2.  Identify the older, simpler block of  statements for task operations ('create', 'update', 'delete').
+        3.  Confirm that the new, more complex logic block above it correctly supersedes this functionality.
+        4.  Use  to delete the old, redundant code block.
+    -   **Why fix this issue and what will be achieved with the fix?** Removing this code is necessary to prevent bugs and logical conflicts. It cleans up the file before proceeding with the rest of the feature implementation.
     -   **Status:** NOT STARTED
     -   **Is recurring issue?** N
-    -   **Should Test frontend/backend/both after fix?** Both.
-    -   **Blocked on other issue:** None.
+    -   **Should Test frontend/backend/both after fix?** Backend.
+    -   **Blocked on other issue:** None. This is the blocker for the current task.
 
 **In progress Task List**:
--   **Task 1: Complete and verify the Intelligent Reminders and Voice Notes feature (P0)**
-    -   **Where to resume:** Begin by testing the backend endpoints as outlined in Pending/In progress Issue list above.
-    -   **What will be achieved with this?** A fully functional advanced notes system with voice transcription, AI analysis, a browsable note library, and push notification reminders, fulfilling the user's latest request.
+-   **Task 1: Complete the Advanced Task Scheduling feature (P0)**
+    -   **Where to resume:**
+        1.  **Backend (Immediate):** Fix Issue 1 by removing the duplicated code in .
+        2.  **Frontend (Next):** Modify . When a user is creating a note and selects the Zadania (Task) category, display new UI components (e.g., time picker, date picker for end date, day-of-week selector) to set the new scheduling options.
+        3.  **Frontend (Finally):** Update the  function to pass these new values to the backend when creating/updating a task.
+    -   **What will be achieved with this?** Users will have granular control over task scheduling, fulfilling the latest feature request.
     -   **Status:** IN PROGRESS
     -   **Should Test frontend/backend/both after fix?** Both.
-    -   **Blocked on something:** No.
+    -   **Blocked on something:** Issue 1 listed above.
 
 **Upcoming and Future Tasks**
 -   **Upcoming Tasks:**
-    -   **Implement Image-based Notes (P1):** The user requested notes in voice, picture, text format. The UI/backend stubs for handling image uploads, storage (as base64), and display need to be implemented. (Files: , ).
-    -   **Re-implement Export Feature (P2):** The agent decided to move the Export feature from a tab to the Notes screen but did not implement the button or logic. This needs to be added to .
+    -   **Re-enable Push Notifications (P1):** The  library was removed from the frontend to fix a build error. This functionality needs to be re-implemented robustly. The backend  is already in place, so the focus should be on a backend-driven push notification system (e.g., using a service like FCM/APNS) that the Expo app can listen to. (Files: , ).
+    -   **Implement Image-based Notes (P2):** The original request included adding notes as pictures. This has not been implemented. This involves adding UI to  to select/take a photo and updating  to handle base64 image uploads.
 -   **Future Tasks:**
-    -   **Note Search Functionality:** Add a search bar to the Notes screen to filter notes by content or tags.
-    -   **Custom Notification Timing:** Allow users to set their own preferences for when they receive weekly summaries or reminders.
-    -   **Photo Annotation:** Allow users to draw or add text to image notes.
+    -   **Re-implement Export Feature:** The Export functionality was removed from the UI and never re-added. A button could be placed on the Settings or Trends screen.
+    -   **Weekly Summaries:** The user requested more comprehensive weekly summaries. The backend has stubs for this, but the logic and frontend display are not implemented.
 
 **Completed work in this session**
--   **Mood Tracker MVP:** Implemented core features including daily mood recording, calendar view (), and trends view ().
--   **Enhanced Mood Tracking:** Upgraded the system to support three entries per day (Morning, Midday, Evening) and a multi-layered mood scoring system.
--   **AI Chatbot:** Integrated an AI chatbot () using the Emergent LLM Key, capable of analyzing mood data and providing insights.
--   **Multimedia Notes (Text):** Created a notes system () where text notes are analyzed by an AI to generate summaries and keywords. The chatbot can also reference these notes.
--   **UI Refactoring:** Reorganized the tab navigation for better UX by removing the 'Export' tab, with the intention of moving it elsewhere.
+-   **UI/UX:**
+    -   Fixed Android bottom navigation bar by correctly implementing .
+    -   Simplified tab navigation by moving Trends into the Calendar screen.
+    -   Redesigned the Calendar screen to display tasks for the selected day.
+-   **Internationalization:**
+    -   Translated the entire application's UI into Polish.
+-   **Core Functionality:**
+    -   Overhauled the notes system to separate user content from AI analysis and added Task/Thought categories.
+    -   Implemented an AI-driven daily summary feature, viewable on the Today screen.
+    -   Created a Settings screen for user preferences (e.g., notification time).
+    -   Implemented a task system with completion status (checkboxes), recurring tasks, and modification via AI chat.
 
 **Earlier issues found/mentioned but not fixed**
-None. The agent has been diligent in fixing bugs as they appeared.
+-   **Issue 1: Frontend Push Notifications are Disabled**
+    -   **Debug checklist:** The  package was removed from  due to build errors in Expo Go. The entire notification flow on the client-side is non-existent.
+    -   **Why to solve this issue and what will be achieved with this?** This is a core feature requested by the user for receiving daily/weekly summaries and reminders.
+    -   **Should Test frontend/backend/both after fix:** Both.
+    -   **Is recurring issue?** N
 
 **Known issue recurrence from previous fork**
--   Issue recurrence in previous fork: None
--   Recurrence count: 0
--   Status: NA
+-   None.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
--   **Frontend:** Expo (SDK 51), React Native, Expo Router (file-based routing), , , , .
--   **Backend:** FastAPI, MongoDB (via ), Pydantic for data validation.
--   **AI:** OpenAI models (GPT-3.5-Turbo, Whisper-1) accessed via the Emergent LLM Key.
--   **Background Jobs:**  library on the backend to schedule push notifications.
+-   **Frontend:** Expo (SDK 51), React Native, Expo Router, , .
+-   **Backend:** FastAPI, MongoDB (), Pydantic.
+-   **AI:** OpenAI models (via Emergent LLM Key) for chat, analysis, and summary generation.
+-   **Background Jobs:**  on the backend for future notification tasks.
 
 **key DB schema**
--   **moods:** 
+-   **users:** 
+-   **ai_context:** 
 -   **notes:** 
+-   **moods:** 
 
 **changes in tech stack**
-None. The stack has been consistent, with new libraries added to support features.
+-   None.
 
 **All files of reference**
--   : Contains all backend API logic, including endpoints for moods, notes, AI chat, voice transcription, and reminder scheduling.
--   : The primary frontend file for the current task. It now includes logic for audio recording, push notifications, and displaying a note library.
--   : Defines the main tab navigation structure for the app.
--   : The UI for the AI chatbot.
+-   : Contains all backend logic. The current work is focused on refactoring the  endpoint within this file.
+-   : Will need to be updated with a new UI for advanced task scheduling.
+-   : Displays tasks and will need to correctly render tasks with the new scheduling options.
+-   : Handles sending task modification commands to the backend.
 
 **Areas that need refactoring**:
--   The Export feature was removed from the tab bar but not re-implemented in its new intended location on the  screen. This is an incomplete refactor.
+-   The push notification system needs a complete re-architecture to be backend-driven to avoid the client-side library issues encountered.
 
 **key api endpoints**
--   : Create/update a mood entry.
--   : Get mood entries for a specific day.
--   : Get advanced mood analytics.
--   : Send a message to the AI chatbot.
--   : Create a new note (text or voice).
--   : Fetch all notes for the library view.
--   : Get an AI-generated summary of notes.
+-   : (IN PROGRESS) Endpoint for the chatbot to create/update/delete tasks with advanced scheduling.
+-   : Create a new note/task.
+-   : Get notes/tasks for a specific day (used by Calendar).
+-   : Mark a task as complete/incomplete.
+-   : Get the AI-generated daily summary.
+-   , : Manage user preferences.
 
 **Critical Info for New Agent**
--   The app heavily relies on the **Emergent LLM Key** for all AI features (chat, note analysis, voice transcription). The key is already integrated into the backend.
--   The backend now uses  to run a background job for scheduling reminders. This is a new dependency; its logs should be monitored if reminders fail.
--   The latest task involves **push notifications** and **device hardware (microphone)**. Testing these features in the preview environment can be complex. Be prepared to rely on console logs and handle permissions correctly in the code ( and ).
--   The  file has grown significantly. It now manages state for UI (tabs, modals), audio recording, file picking, and push notifications.
+-   **Your immediate first step is to fix the backend.** You must resolve the duplicated code issue in  before touching the frontend.
+-   **Respond in Polish.** This is non-negotiable.
+-   The user's latest request is for a complex scheduling UI/UX. Plan how to present options for time, end-date, and days-of-the-week elegantly in the  screen.
+-   Push notifications are currently disabled on the frontend. Be aware of this limitation and do not try to use  until a new strategy is decided.
 
 **documents created in this job**
-- None.
+-   
+-    has been updated but the agent did not show the contents.
 
 **Last 10 User Messages and any pending HUMAN messages**
--   **User (Chat 176):** Requested intelligent reminder scheduling, voice-to-text, push notifications, and an enhanced notes library with daily/weekly summaries. (IN PROGRESS)
--   **User (Chat 143):** Requested a notes feature for text, voice, and pictures, with AI analysis and reminders from the chatbot. (Partially Completed, Voice/Reminders IN PROGRESS, Pictures NOT STARTED)
--   **User (Chat 106):** Requested an AI chatbot to explain trends and send weekly notifications. (Completed)
--   **User (Chat 65):** Requested multiple daily entries (Morning, Midday, Evening) and multi-layered mood scoring. (Completed)
+-   **User (Chat 342):** Requested more advanced task scheduling (specific time, end date, specific weekdays) and better chat integration for modifying them. (IN PROGRESS)
+-   **User (Chat 295):** Requested tasks be checkable as done, be repeatable, and be modifiable via chat. (Completed)
+-   **User (Chat 282):** Asked the agent to run a health check for deployment. (Completed)
+-   **User (Chat 263):** Requested a redesign of the calendar screen to show tasks instead of stats. (Completed)
+-   **User (Chat 201, 204):** Requested a major AI feature: daily summaries based on notes/moods, with push notifications and user-configurable settings. (Completed, except push notifications)
+-   **User (Chat 154, 151):** Requested a major refactor: simplify the layout, and change the notes system so the AI doesn't modify user input, adding categories instead. (Completed)
+-   **User (Chat 56):** Requested to create a Polish language version of the app. (Completed)
+-   **User (Chat 38):** Reported that the bottom navigation bar was blocked by Android system keys. (Completed)
 
 **Project Health Check:**
--   **Broken:** None.
+-   **Broken:** The Advanced Task Scheduling feature is in a broken, half-implemented state.  has a code issue, and the required frontend UI does not exist.
 -   **Mocked:** None.
--   The latest feature is **untested** and involves background tasks and hardware access, which increases the risk of bugs.
 
 **3rd Party Integrations**
--   **OpenAI GPT-3.5-Turbo & Whisper-1** — uses Emergent LLM Key.
+-   **OpenAI GPT models** — uses Emergent LLM Key.
 
 **Testing status**
--   Testing agent used after significant changes: YES (The agent has consistently used  for backend and  for frontend after major feature implementations).
+-   Testing agent used after significant changes: YES
 -   Troubleshoot agent used after agent stuck in loop: NO
 -   Test files created: []
--   Known regressions: []
+-   Known regressions: Push notifications were removed to fix a build error and are no longer functional.
 
 **Credentials to test flow:**
 N/A
 
 **What agent forgot to execute**
--   **Image-based Notes:** The user requested notes in voice, picture, text format. The agent has only implemented text and is currently working on voice. The picture functionality has not been started.
--   **Export Functionality Placement:** The agent moved the Export feature out of the main navigation but did not add the button/logic for it within its new intended location on the  screen.
+-   **Image-based Notes:** This feature was part of the original expanded scope but has been consistently deferred.
+-   **Export Functionality:** The UI for this feature was removed during a layout refactor and never re-implemented in its new intended location.
 
 </analysis>

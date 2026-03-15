@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import time
 
 # Backend URL from environment
-BACKEND_URL = "https://moodtrack-115.preview.emergentagent.com/api"
+BACKEND_URL = "https://ai-mood-buddy-2.preview.emergentagent.com/api"
 
 class NotesAPITester:
     def __init__(self):

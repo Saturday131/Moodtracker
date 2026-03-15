@@ -6,7 +6,7 @@ Additional edge case testing for Notes API
 import requests
 import json
 
-BACKEND_URL = "https://moodtrack-115.preview.emergentagent.com/api"
+BACKEND_URL = "https://ai-mood-buddy-2.preview.emergentagent.com/api"
 
 def test_edge_cases():
     """Test edge cases and error conditions"""
