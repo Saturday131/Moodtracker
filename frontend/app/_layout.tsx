@@ -9,6 +9,7 @@ import AuthScreen from './auth-screen';
 function AppContent() {
   const { user, loading } = useAuth();
   const insets = useSafeAreaInsets();
+  const [showProfile, setShowProfile] = useState(false);
 
   if (loading) {
     return (
@@ -23,6 +24,8 @@ function AppContent() {
   }
 
   return (
+    <>
+    <ProfileModal visible={showProfile} onClose={() => setShowProfile(false)} />
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: '#6366F1',
@@ -94,7 +97,9 @@ function AppContent() {
       <Tabs.Screen name="settings" options={{ href: null }} />
       <Tabs.Screen name="auth-screen" options={{ href: null }} />
       <Tabs.Screen name="auth-context" options={{ href: null }} />
+      <Tabs.Screen name="profile-modal" options={{ href: null }} />
     </Tabs>
+    </>
   );
 }
 

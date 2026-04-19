@@ -741,7 +741,30 @@ async def login(input: UserLogin):
 
 @api_router.get("/auth/me")
 async def get_me(current_user: dict = Depends(get_current_user)):
-    return {"id": current_user["id"], "email": current_user["email"], "name": current_user["name"]}
+    return {"id": current_user["id"], "email": current_user["email"], "name": current_user["name"], "created_at": current_user.get("created_at", "")}
+
+@api_router.put("/auth/profile")
+async def update_profile(name: Optional[str] = None, email: Optional[str] = None, current_password: Optional[str] = None, new_password: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    update_data = {}
+    if name and name.strip():
+        update_data["name"] = name.strip()
+    if email and email.strip():
+        existing = await db.users_auth.find_one({"email": email.lower(), "id": {"$ne": current_user["id"]}})
+        if existing:
+            raise HTTPException(status_code=400, detail="Ten email jest już zajęty")
+        update_data["email"] = email.lower()
+    if new_password:
+        if not current_password:
+            raise HTTPException(status_code=400, detail="Podaj aktualne hasło")
+        user_full = await db.users_auth.find_one({"id": current_user["id"]})
+        if not pwd_context.verify(current_password, user_full["password_hash"]):
+            raise HTTPException(status_code=400, detail="Nieprawidłowe aktualne hasło")
+        update_data["password_hash"] = pwd_context.hash(new_password)
+    if not update_data:
+        raise HTTPException(status_code=400, detail="Brak zmian")
+    await db.users_auth.update_one({"id": current_user["id"]}, {"$set": update_data})
+    updated = await db.users_auth.find_one({"id": current_user["id"]}, {"_id": 0, "password_hash": 0})
+    return updated
 
 # ============ Semantic Search ============
 

@@ -18,6 +18,7 @@ import { useRouter } from 'expo-router';
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
 import { useAuth } from './auth-context';
+import ProfileModal from './profile-modal';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -78,6 +79,7 @@ const SCORE_COLORS = ['#EF4444', '#F97316', '#EAB308', '#84CC16', '#22C55E'];
 export default function TodayScreen() {
   const router = useRouter();
   const { authHeaders, user, logout } = useAuth();
+  const [showProfile, setShowProfile] = useState(false);
   const [selectedTime, setSelectedTime] = useState<string>('morning');
   const [layers, setLayers] = useState<MoodLayers>({
     overall: 3,
@@ -214,6 +216,7 @@ export default function TodayScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
+      <ProfileModal visible={showProfile} onClose={() => setShowProfile(false)} />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
@@ -231,9 +234,9 @@ export default function TodayScreen() {
             </View>
             <TouchableOpacity 
               style={styles.settingsButton}
-              onPress={() => router.push('/settings')}
+              onPress={() => setShowProfile(true)}
             >
-              <Ionicons name="settings-outline" size={24} color="#9CA3AF" />
+              <Ionicons name="person-circle-outline" size={28} color="#9CA3AF" />
             </TouchableOpacity>
           </View>
 
