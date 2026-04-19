@@ -35,12 +35,22 @@ Mobilna aplikacja do śledzenia nastroju (Expo + FastAPI + MongoDB) z polskim UI
   - UI: pola daty, godziny, selector dni, data końca
   - Wyświetlanie w kalendarzu: badge godziny + etykieta dni
 
+### Completed (April 2026)
+- [x] Notatki głosowe — nagrywanie i zapis base64 w MongoDB, odtwarzanie
+- [x] Notatki z obrazkami — wybór z galerii/aparat, zapis base64, podgląd
+- [x] **System autoryzacji JWT** — rejestracja, logowanie, profil użytkownika
+- [x] **Baza wektorowa ChromaDB** — embeddingi semantyczne notatek (all-MiniLM-L6-v2)
+- [x] **Wyszukiwanie semantyczne** — endpoint `/api/notes/search?q=...`
+- [x] **Izolacja danych per użytkownik** — user_id na wszystkich endpointach, filtrowanie w ChromaDB
+
 ## Backlog
 
 ### P1
 - [x] Notatki głosowe — nagrywanie i zapis base64 w MongoDB, odtwarzanie w widoku szczegółowym
 - [x] Notatki z obrazkami — wybór z galerii/aparat, zapis base64 w MongoDB, podgląd w szczegółach
-- [ ] Transkrypcja audio i interpretacja AI zdjęć (następny krok)
+- [x] **System auth JWT** — rejestracja/logowanie, ekran auth, AuthProvider
+- [x] **Baza wektorowa ChromaDB** — embeddingi notatek, semantic search, izolacja per user
+- [ ] Transkrypcja audio i interpretacja AI zdjęć (następny krok — OpenAI Whisper + Vision)
 - [ ] Ponowne włączenie push notifications (backend-driven, np. FCM)
 
 ### P2
