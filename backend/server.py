@@ -1,4 +1,5 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -14,6 +15,9 @@ from emergentintegrations.llm.chat import LlmChat, UserMessage
 import base64
 import json
 import re
+import jwt
+from passlib.context import CryptContext
+import chromadb
 
 
 ROOT_DIR = Path(__file__).parent
@@ -26,6 +30,55 @@ db = client[os.environ['DB_NAME']]
 
 # LLM Key
 EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
+
+# Auth
+JWT_SECRET = os.environ.get('JWT_SECRET', str(uuid.uuid4()))
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRY_HOURS = 168  # 7 days
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+security = HTTPBearer(auto_error=False)
+
+# ChromaDB
+chroma_client = chromadb.Client()
+notes_collection = chroma_client.get_or_create_collection("notes_embeddings")
+
+# Auth models
+class UserRegister(BaseModel):
+    email: str
+    password: str
+    name: str
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+class UserProfile(BaseModel):
+    id: str
+    email: str
+    name: str
+    created_at: str
+
+def create_jwt(user_id: str, email: str) -> str:
+    payload = {
+        "user_id": user_id,
+        "email": email,
+        "exp": datetime.utcnow() + timedelta(hours=JWT_EXPIRY_HOURS),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Wymagane logowanie")
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user = await db.users_auth.find_one({"id": payload["user_id"]}, {"_id": 0})
+        if not user:
+            raise HTTPException(status_code=401, detail="Użytkownik nie istnieje")
+        return user
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token wygasł")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Nieprawidłowy token")
 
 # Create the main app
 app = FastAPI()
@@ -646,9 +699,87 @@ Pisz zwięźle (max 200 słów), ciepło i personalnie. Używaj emoji."""
     return summary_data
 
 # Routes
+# ============ Auth Endpoints ============
+
+def embed_note_to_chroma(note_id: str, user_id: str, text: str):
+    """Add or update note embedding in ChromaDB"""
+    if not text or not text.strip():
+        return
+    try:
+        notes_collection.upsert(
+            ids=[note_id],
+            documents=[text],
+            metadatas=[{"user_id": user_id}],
+        )
+    except Exception as e:
+        logging.error(f"ChromaDB embed error: {e}")
+
+@api_router.post("/auth/register")
+async def register(input: UserRegister):
+    existing = await db.users_auth.find_one({"email": input.email.lower()}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email już zarejestrowany")
+    user_id = str(uuid.uuid4())
+    user_doc = {
+        "id": user_id,
+        "email": input.email.lower(),
+        "name": input.name,
+        "password_hash": pwd_context.hash(input.password),
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    await db.users_auth.insert_one(user_doc)
+    token = create_jwt(user_id, input.email.lower())
+    return {"token": token, "user": {"id": user_id, "email": input.email.lower(), "name": input.name}}
+
+@api_router.post("/auth/login")
+async def login(input: UserLogin):
+    user = await db.users_auth.find_one({"email": input.email.lower()}, {"_id": 0})
+    if not user or not pwd_context.verify(input.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Nieprawidłowy email lub hasło")
+    token = create_jwt(user["id"], user["email"])
+    return {"token": token, "user": {"id": user["id"], "email": user["email"], "name": user["name"]}}
+
+@api_router.get("/auth/me")
+async def get_me(current_user: dict = Depends(get_current_user)):
+    return {"id": current_user["id"], "email": current_user["email"], "name": current_user["name"]}
+
+# ============ Semantic Search ============
+
+@api_router.get("/notes/search")
+async def semantic_search(q: str, n: int = 10, current_user: dict = Depends(get_current_user)):
+    """Semantic search over user's notes using ChromaDB"""
+    user_id = current_user["id"]
+    try:
+        results = notes_collection.query(
+            query_texts=[q],
+            n_results=n,
+            where={"user_id": user_id},
+        )
+    except Exception:
+        return {"results": []}
+    
+    note_ids = results["ids"][0] if results["ids"] else []
+    if not note_ids:
+        return {"results": []}
+    
+    notes = await db.notes.find({"id": {"$in": note_ids}}, {"_id": 0, "voice_base64": 0, "image_base64": 0}).to_list(n)
+    notes_map = {n["id"]: n for n in notes}
+    
+    ordered = []
+    distances = results["distances"][0] if results["distances"] else []
+    for i, nid in enumerate(note_ids):
+        if nid in notes_map:
+            note_data = notes_map[nid]
+            note_data["relevance"] = round(1 - (distances[i] if i < len(distances) else 1), 3)
+            ordered.append(note_data)
+    
+    return {"results": ordered, "query": q}
+
+# ============ Main API ============
+
 @api_router.get("/")
 async def root():
-    return {"message": "Mood Tracker API v4.0 - Notes Library & Smart Reminders"}
+    return {"message": "Mood Tracker API v5.0 - Auth & Semantic Search"}
 
 @api_router.get("/mood-layers")
 async def get_mood_layers():
@@ -656,32 +787,34 @@ async def get_mood_layers():
 
 # Mood endpoints
 @api_router.post("/moods", response_model=MoodEntry)
-async def create_mood(input: MoodEntryCreate):
+async def create_mood(input: MoodEntryCreate, current_user: dict = Depends(get_current_user)):
     if input.time_of_day not in TIME_OF_DAY_OPTIONS:
         raise HTTPException(status_code=400, detail=f"time_of_day must be one of {TIME_OF_DAY_OPTIONS}")
     
-    existing = await db.moods.find_one({"date": input.date, "time_of_day": input.time_of_day})
+    existing = await db.moods.find_one({"date": input.date, "time_of_day": input.time_of_day, "user_id": current_user["id"]})
     
     if existing:
         update_data = input.dict()
         update_data["timestamp"] = datetime.utcnow()
         update_data["layers"] = input.layers.dict()
         await db.moods.update_one(
-            {"date": input.date, "time_of_day": input.time_of_day},
+            {"date": input.date, "time_of_day": input.time_of_day, "user_id": current_user["id"]},
             {"$set": update_data}
         )
-        updated = await db.moods.find_one({"date": input.date, "time_of_day": input.time_of_day})
+        updated = await db.moods.find_one({"date": input.date, "time_of_day": input.time_of_day, "user_id": current_user["id"]})
         return MoodEntry(**updated)
     
     mood_dict = input.dict()
     mood_dict["layers"] = input.layers.dict()
     mood_obj = MoodEntry(**mood_dict)
-    await db.moods.insert_one(mood_obj.dict())
+    doc = mood_obj.dict()
+    doc["user_id"] = current_user["id"]
+    await db.moods.insert_one(doc)
     return mood_obj
 
 @api_router.get("/moods", response_model=List[MoodEntry])
-async def get_moods(start_date: Optional[str] = None, end_date: Optional[str] = None, time_of_day: Optional[str] = None):
-    query = {}
+async def get_moods(start_date: Optional[str] = None, end_date: Optional[str] = None, time_of_day: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    query: dict = {"user_id": current_user["id"]}
     if start_date and end_date:
         query["date"] = {"$gte": start_date, "$lte": end_date}
     elif start_date:
@@ -695,8 +828,8 @@ async def get_moods(start_date: Optional[str] = None, end_date: Optional[str] = 
     return [MoodEntry(**mood) for mood in moods if "time_of_day" in mood and "layers" in mood]
 
 @api_router.get("/moods/date/{date_str}")
-async def get_moods_by_date(date_str: str):
-    moods = await db.moods.find({"date": date_str}).sort("time_of_day", 1).to_list(3)
+async def get_moods_by_date(date_str: str, current_user: dict = Depends(get_current_user)):
+    moods = await db.moods.find({"date": date_str, "user_id": current_user["id"]}).sort("time_of_day", 1).to_list(3)
     result = {tod: None for tod in TIME_OF_DAY_OPTIONS}
     for mood in moods:
         if "time_of_day" in mood and "layers" in mood:
@@ -829,15 +962,18 @@ async def compare_periods(current_days: int = 7):
 
 # Note endpoints
 @api_router.post("/notes", response_model=Note)
-async def create_note(input: NoteCreate):
+async def create_note(input: NoteCreate, current_user: dict = Depends(get_current_user)):
     """Create a new note - saved exactly as user writes it, no AI modification"""
     note_dict = input.dict()
     note_obj = Note(**note_dict)
+    doc = note_obj.dict()
+    doc["user_id"] = current_user["id"]
+    await db.notes.insert_one(doc)
     
-    # Store note exactly as user created it - no AI modifications
-    # AI analysis is available separately via /notes/{id}/analyze
+    # Embed text to ChromaDB for semantic search
+    text_for_embedding = " ".join(filter(None, [note_obj.title, note_obj.text_content]))
+    embed_note_to_chroma(note_obj.id, current_user["id"], text_for_embedding)
     
-    await db.notes.insert_one(note_obj.dict())
     return note_obj
 
 @api_router.get("/notes", response_model=List[Note])
@@ -846,10 +982,11 @@ async def get_notes(
     offset: int = 0,
     tag: Optional[str] = None,
     has_reminder: Optional[bool] = None,
-    search: Optional[str] = None
+    search: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
 ):
     """Get all notes with filters and pagination"""
-    query = {}
+    query: dict = {"user_id": current_user["id"]}
     if tag:
         query["tags"] = tag
     if has_reminder is not None:
@@ -871,13 +1008,14 @@ async def get_notes(
 
 @api_router.get("/notes/library")
 async def get_notes_library(
-    period: str = "all",  # all, week, month, year
-    sort_by: str = "date",  # date, title
+    period: str = "all",
+    sort_by: str = "date",
     tag: Optional[str] = None,
-    category: Optional[str] = None  # "zadania" or "przemyslenia"
+    category: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
 ):
     """Get notes library with organization options"""
-    query = {}
+    query: dict = {"user_id": current_user["id"]}
     
     if period != "all":
         now = datetime.utcnow()
@@ -925,15 +1063,15 @@ async def get_notes_library(
     }
 
 @api_router.get("/notes/{note_id}", response_model=Note)
-async def get_note(note_id: str):
-    note = await db.notes.find_one({"id": note_id})
+async def get_note(note_id: str, current_user: dict = Depends(get_current_user)):
+    note = await db.notes.find_one({"id": note_id, "user_id": current_user["id"]})
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
     return Note(**note)
 
 @api_router.put("/notes/{note_id}", response_model=Note)
-async def update_note(note_id: str, input: NoteUpdate):
-    note = await db.notes.find_one({"id": note_id})
+async def update_note(note_id: str, input: NoteUpdate, current_user: dict = Depends(get_current_user)):
+    note = await db.notes.find_one({"id": note_id, "user_id": current_user["id"]})
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
     
@@ -944,16 +1082,21 @@ async def update_note(note_id: str, input: NoteUpdate):
         analysis = await analyze_note_content(input.text_content)
         update_data["ai_summary"] = analysis.get("summary")
         update_data["ai_keywords"] = analysis.get("keywords", [])
+        embed_note_to_chroma(note_id, current_user["id"], input.text_content)
     
     await db.notes.update_one({"id": note_id}, {"$set": update_data})
     updated = await db.notes.find_one({"id": note_id})
     return Note(**updated)
 
 @api_router.delete("/notes/{note_id}")
-async def delete_note(note_id: str):
-    result = await db.notes.delete_one({"id": note_id})
+async def delete_note(note_id: str, current_user: dict = Depends(get_current_user)):
+    result = await db.notes.delete_one({"id": note_id, "user_id": current_user["id"]})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Note not found")
+    try:
+        notes_collection.delete(ids=[note_id])
+    except Exception:
+        pass
     return {"message": "Note deleted successfully"}
 
 @api_router.put("/notes/{note_id}/reminder")
@@ -995,7 +1138,7 @@ async def mark_reminder_sent(note_id: str):
 
 # Task completion and recurring tasks endpoints
 @api_router.put("/tasks/{task_id}/complete")
-async def complete_task(task_id: str):
+async def complete_task(task_id: str, current_user: dict = Depends(get_current_user)):
     """Mark a task as completed"""
     task = await db.notes.find_one({"id": task_id, "category": "zadania"})
     if not task:
@@ -1010,7 +1153,7 @@ async def complete_task(task_id: str):
     return Note(**updated)
 
 @api_router.put("/tasks/{task_id}/uncomplete")
-async def uncomplete_task(task_id: str):
+async def uncomplete_task(task_id: str, current_user: dict = Depends(get_current_user)):
     """Mark a task as not completed"""
     task = await db.notes.find_one({"id": task_id, "category": "zadania"})
     if not task:
@@ -1025,12 +1168,14 @@ async def uncomplete_task(task_id: str):
     return Note(**updated)
 
 @api_router.get("/tasks/for-date/{date}")
-async def get_tasks_for_date(date: str):
+async def get_tasks_for_date(date: str, current_user: dict = Depends(get_current_user)):
     """Get all tasks for a specific date, including recurring task instances"""
     # Get tasks scheduled for this date
+    user_id = current_user["id"]
     scheduled_tasks = await db.notes.find({
         "category": "zadania",
-        "scheduled_date": date
+        "scheduled_date": date,
+        "user_id": user_id
     }).to_list(100)
     
     # Get tasks created on this date (without scheduled_date)
@@ -1042,7 +1187,8 @@ async def get_tasks_for_date(date: str):
         "category": "zadania",
         "scheduled_date": {"$in": [None, ""]},
         "is_recurring": {"$ne": True},
-        "created_at": {"$gte": start_of_day, "$lte": end_of_day}
+        "created_at": {"$gte": start_of_day, "$lte": end_of_day},
+        "user_id": user_id
     }).to_list(100)
     
     # Get recurring tasks that should appear on this date
@@ -1051,6 +1197,7 @@ async def get_tasks_for_date(date: str):
     recurring_tasks = await db.notes.find({
         "category": "zadania",
         "is_recurring": True,
+        "user_id": user_id,
         "$or": [
             {"recurrence_end_date": {"$exists": False}},
             {"recurrence_end_date": None},
@@ -1210,7 +1357,7 @@ class ChatTaskModification(BaseModel):
     session_id: Optional[str] = None
 
 @api_router.post("/tasks/chat-modify")
-async def modify_tasks_via_chat(input: ChatTaskModification):
+async def modify_tasks_via_chat(input: ChatTaskModification, current_user: dict = Depends(get_current_user)):
     """Allow AI to modify tasks based on user's natural language request - supports advanced scheduling"""
     if not EMERGENT_LLM_KEY:
         raise HTTPException(status_code=500, detail="AI not configured")
@@ -1468,7 +1615,7 @@ async def get_weekly_notes_summary():
 
 # Chat endpoints
 @api_router.post("/chat", response_model=ChatResponse)
-async def chat_with_mood_assistant(request: ChatRequest):
+async def chat_with_mood_assistant(request: ChatRequest, current_user: dict = Depends(get_current_user)):
     if not EMERGENT_LLM_KEY:
         raise HTTPException(status_code=500, detail="AI chat not configured")
     
@@ -1569,7 +1716,7 @@ async def get_daily_summary_endpoint():
 
 # New comprehensive summary endpoint
 @api_router.get("/summary/today")
-async def get_today_summary():
+async def get_today_summary(current_user: dict = Depends(get_current_user)):
     """Get comprehensive daily summary with mood comparison, notes, and pending tasks"""
     summary = await generate_comprehensive_daily_summary()
     return summary
@@ -1640,17 +1787,17 @@ Pisz ciepło, wspierająco i personalnie. Używaj emoji. Max 400 słów."""
 
 # User Settings endpoints
 @api_router.get("/settings")
-async def get_settings():
+async def get_settings(current_user: dict = Depends(get_current_user)):
     """Get user settings"""
-    settings = await db.user_settings.find_one({"user_id": "default_user"})
+    settings = await db.user_settings.find_one({"user_id": current_user["id"]})
     if not settings:
         default_settings = UserSettings()
-        await db.user_settings.insert_one(default_settings.dict())
-        settings = default_settings.dict()
-    else:
-        # Remove MongoDB _id for serialization
-        if "_id" in settings:
-            del settings["_id"]
+        doc = default_settings.dict()
+        doc["user_id"] = current_user["id"]
+        await db.user_settings.insert_one(doc)
+        settings = doc
+    if "_id" in settings:
+        del settings["_id"]
     return settings
 
 @api_router.put("/settings")
@@ -1659,7 +1806,8 @@ async def update_settings(
     daily_notification_time: Optional[str] = None,
     weekly_notification_enabled: Optional[bool] = None,
     weekly_notification_day: Optional[int] = None,
-    weekly_notification_time: Optional[str] = None
+    weekly_notification_time: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
 ):
     """Update user settings"""
     update_data = {"updated_at": datetime.utcnow()}
@@ -1676,13 +1824,12 @@ async def update_settings(
         update_data["weekly_notification_time"] = weekly_notification_time
     
     await db.user_settings.update_one(
-        {"user_id": "default_user"},
+        {"user_id": current_user["id"]},
         {"$set": update_data},
         upsert=True
     )
     
-    # Get updated settings
-    settings = await db.user_settings.find_one({"user_id": "default_user"})
+    settings = await db.user_settings.find_one({"user_id": current_user["id"]})
     if settings and "_id" in settings:
         del settings["_id"]
     return settings

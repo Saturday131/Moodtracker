@@ -1,12 +1,27 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { View, StyleSheet, Platform } from 'react-native';
+import { Platform, ActivityIndicator, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AuthProvider, useAuth } from './auth-context';
+import AuthScreen from './auth-screen';
 
-export default function TabLayout() {
+function AppContent() {
+  const { user, loading } = useAuth();
   const insets = useSafeAreaInsets();
-  
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#111827', justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#6366F1" />
+      </View>
+    );
+  }
+
+  if (!user) {
+    return <AuthScreen />;
+  }
+
   return (
     <Tabs
       screenOptions={{
@@ -54,12 +69,7 @@ export default function TabLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="trends"
-        options={{
-          href: null, // Hidden from tab bar, accessible from calendar
-        }}
-      />
+      <Tabs.Screen name="trends" options={{ href: null }} />
       <Tabs.Screen
         name="notes"
         options={{
@@ -80,18 +90,18 @@ export default function TabLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="export"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          href: null, // Hidden from tab bar, accessible via button
-        }}
-      />
+      <Tabs.Screen name="export" options={{ href: null }} />
+      <Tabs.Screen name="settings" options={{ href: null }} />
+      <Tabs.Screen name="auth-screen" options={{ href: null }} />
+      <Tabs.Screen name="auth-context" options={{ href: null }} />
     </Tabs>
+  );
+}
+
+export default function TabLayout() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }

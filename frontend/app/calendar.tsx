@@ -24,6 +24,7 @@ import {
   endOfWeek,
 } from 'date-fns';
 import { pl } from 'date-fns/locale';
+import { useAuth } from './auth-context';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -88,6 +89,7 @@ function getScoreColor(score: number): string {
 
 export default function CalendarScreen() {
   const router = useRouter();
+  const { authHeaders } = useAuth();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [moods, setMoods] = useState<MoodEntry[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -103,7 +105,8 @@ export default function CalendarScreen() {
       const end = format(endOfMonth(currentMonth), 'yyyy-MM-dd');
       
       const response = await fetch(
-        `${API_URL}/api/moods?start_date=${start}&end_date=${end}`
+        `${API_URL}/api/moods?start_date=${start}&end_date=${end}`,
+        { headers: authHeaders() }
       );
       
       if (response.ok) {
@@ -119,7 +122,7 @@ export default function CalendarScreen() {
 
   const fetchAllTasks = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/notes/library?category=zadania`);
+      const response = await fetch(`${API_URL}/api/notes/library?category=zadania`, { headers: authHeaders() });
       if (response.ok) {
         const data = await response.json();
         setTasks(data.notes || []);
@@ -133,7 +136,7 @@ export default function CalendarScreen() {
     setLoadingTasks(true);
     try {
       const dateStr = format(date, 'yyyy-MM-dd');
-      const response = await fetch(`${API_URL}/api/tasks/for-date/${dateStr}`);
+      const response = await fetch(`${API_URL}/api/tasks/for-date/${dateStr}`, { headers: authHeaders() });
       if (response.ok) {
         const data = await response.json();
         setTasksForDay(data);
@@ -189,6 +192,7 @@ export default function CalendarScreen() {
       const endpoint = isCompleted ? 'uncomplete' : 'complete';
       const response = await fetch(`${API_URL}/api/tasks/${taskId}/${endpoint}`, {
         method: 'PUT',
+        headers: authHeaders(),
       });
       
       if (response.ok) {
@@ -214,7 +218,7 @@ export default function CalendarScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await fetch(`${API_URL}/api/notes/${taskId}`, { method: 'DELETE' });
+              await fetch(`${API_URL}/api/notes/${taskId}`, { method: 'DELETE', headers: authHeaders() });
               fetchTasksForDate(selectedDate);
               fetchAllTasks();
             } catch (error) {

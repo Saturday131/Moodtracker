@@ -177,6 +177,90 @@ backend:
         agent: "main"
         comment: "Deletes mood entry by ID"
 
+  - task: "User Registration API - POST /api/auth/register"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: User registration with valid data works correctly. Returns token and user object with id, email, name. Duplicate registration properly returns 400 error."
+
+  - task: "User Login API - POST /api/auth/login"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: User login with valid credentials works correctly. Returns JWT token and user data."
+
+  - task: "Auth Me API - GET /api/auth/me"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Auth me endpoint returns user data correctly when valid Bearer token provided. Returns 401 for invalid tokens."
+
+  - task: "JWT Authentication Middleware"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: All protected endpoints (notes, moods) correctly return 401 without valid authentication token. JWT middleware working properly."
+
+  - task: "User Data Isolation"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Complete data isolation between users verified. User 1 can only see their own notes/moods, User 2 can only see their own data. No cross-user data leakage."
+
+  - task: "Semantic Search API - GET /api/notes/search"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Semantic search with ChromaDB working correctly. User 1 can find their coffee note when searching for 'kawa'. User isolation properly enforced - User 2 search results only include their own notes, never User 1's notes."
+
+  - task: "Mood Entry with Authentication"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Mood entry creation and retrieval with authentication works correctly. POST /api/moods creates mood entries, GET /api/moods/date/{date} retrieves them properly."
+
 frontend:
   - task: "Today Screen - Mood Selection with Emojis"
     implemented: true
@@ -262,6 +346,8 @@ agent_communication:
     message: "✅ ADVANCED TASK SCHEDULING SYSTEM TESTING COMPLETED: All 13 tests passed (100% success rate). Tested task creation with complex recurrence patterns (daily, weekdays, custom Mon/Wed/Fri), scheduled times, end dates. GET /api/tasks/for-date correctly returns tasks based on recurrence patterns - verified Monday (7 tasks), Tuesday (3 tasks), Wednesday (6 tasks), Saturday (2 tasks). POST /api/tasks/chat-modify successfully creates tasks via AI (Polish language). Task completion/uncompletion toggle works properly. Notes library filtering by zadania category works. All advanced scheduling fields (is_recurring, recurrence_pattern, recurrence_days, scheduled_time, recurrence_end_date, scheduled_date) are correctly saved and retrieved. Task deletion works properly. AI integration with EMERGENT_LLM_KEY functional for chat-based task modifications."
   - agent: "testing"
     message: "✅ EXPO MOOD TRACKER APP UI TESTING COMPLETED: Comprehensive testing of Polish mood tracker app at https://ai-mood-buddy-2.preview.emergentagent.com in mobile dimensions (390x844). All specified flows verified: 1) Notes screen (/notes) displays task list with time badges (07:00, 08:30) and recurrence info 'Wybrane dni (Pn, Śr, Pt)' - CONFIRMED. FAB button visible and functional. 2) Calendar screen (/calendar) renders with month navigation, day selection works. Day 16 shows tasks with time badges and recurrence labels. Day 17 shows different task count (recurrence logic working). 3) Bottom tab navigation (Dziś, Kalendarz, Notatki, Czat) fully functional. Dark theme (#111827) working correctly. All UI elements properly displayed in Polish. App loads and functions perfectly in mobile viewport. No critical issues found."
+  - agent: "testing"
+    message: "✅ COMPREHENSIVE AUTH SYSTEM & SEMANTIC SEARCH TESTING COMPLETED: All 18 authentication and search tests passed (100% success rate). VERIFIED: 1) User registration (POST /api/auth/register) creates users with JWT tokens and proper user data. 2) User login (POST /api/auth/login) authenticates correctly. 3) Duplicate registration properly returns 400 error. 4) Auth me endpoint (GET /api/auth/me) returns user data with valid tokens, 401 for invalid tokens. 5) All protected endpoints (notes, moods) correctly require authentication - return 401 without tokens. 6) COMPLETE DATA ISOLATION between users verified - User 1 only sees their notes/moods, User 2 only sees their data, no cross-user leakage. 7) SEMANTIC SEARCH with ChromaDB working perfectly - User 1 finds coffee notes when searching 'kawa', User 2 search results properly isolated to only their own notes. 8) Mood entry creation/retrieval with auth working correctly. 9) Invalid token handling returns proper 401 errors. JWT authentication middleware, user isolation, and semantic search all functioning perfectly."
 
   - task: "Notes API - POST /api/notes with voice transcription"
     implemented: true

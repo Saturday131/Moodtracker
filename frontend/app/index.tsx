@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
+import { useAuth } from './auth-context';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -76,6 +77,7 @@ const SCORE_COLORS = ['#EF4444', '#F97316', '#EAB308', '#84CC16', '#22C55E'];
 
 export default function TodayScreen() {
   const router = useRouter();
+  const { authHeaders, user, logout } = useAuth();
   const [selectedTime, setSelectedTime] = useState<string>('morning');
   const [layers, setLayers] = useState<MoodLayers>({
     overall: 3,
@@ -105,7 +107,7 @@ export default function TodayScreen() {
   const fetchTodayMoods = async () => {
     try {
       setFetchingMood(true);
-      const response = await fetch(`${API_URL}/api/moods/date/${today}`);
+      const response = await fetch(`${API_URL}/api/moods/date/${today}`, { headers: authHeaders() });
       if (response.ok) {
         const data = await response.json();
         setExistingMoods(data);
@@ -129,7 +131,7 @@ export default function TodayScreen() {
   const fetchDailySummary = async () => {
     setLoadingSummary(true);
     try {
-      const response = await fetch(`${API_URL}/api/summary/today`);
+      const response = await fetch(`${API_URL}/api/summary/today`, { headers: authHeaders() });
       if (response.ok) {
         const data = await response.json();
         setDailySummary(data);
@@ -164,7 +166,7 @@ export default function TodayScreen() {
     try {
       const response = await fetch(`${API_URL}/api/moods`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
           date: today,
           time_of_day: selectedTime,

@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from './auth-context';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -33,6 +34,7 @@ const QUICK_QUESTIONS = [
 ];
 
 export default function ChatScreen() {
+  const { authHeaders } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);

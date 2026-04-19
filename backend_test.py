@@ -1,426 +1,509 @@
 #!/usr/bin/env python3
 """
-Advanced Task Scheduling Backend Testing for Mood Tracker App
-Tests all task scheduling APIs with complex recurrence patterns
+Comprehensive Backend API Testing for Mood Tracker App
+Tests auth system and semantic search with user isolation
 """
 
-import asyncio
-import aiohttp
+import requests
 import json
-from datetime import datetime, timedelta
-from typing import Dict, Any, List
 import sys
+from datetime import datetime
 
-# API Base URL - using production URL from .env
-API_BASE = "https://ai-mood-buddy-2.preview.emergentagent.com/api"
+# Backend URL from environment
+BACKEND_URL = "https://ai-mood-buddy-2.preview.emergentagent.com"
+API_BASE = f"{BACKEND_URL}/api"
 
-class TaskSchedulingTester:
+class TestResults:
     def __init__(self):
-        self.session = None
-        self.created_task_ids = []  # Track created tasks for cleanup
-        self.test_results = []
-        
-    async def __aenter__(self):
-        self.session = aiohttp.ClientSession()
-        return self
+        self.passed = 0
+        self.failed = 0
+        self.errors = []
     
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.session.close()
+    def log_pass(self, test_name):
+        print(f"✅ PASS: {test_name}")
+        self.passed += 1
     
-    def log_result(self, test_name: str, success: bool, details: str = "", response_data: Any = None):
-        """Log test result"""
-        status = "✅ PASS" if success else "❌ FAIL"
-        result = {
-            "test": test_name,
-            "status": status,
-            "success": success,
-            "details": details,
-            "response_data": response_data
-        }
-        self.test_results.append(result)
-        print(f"{status}: {test_name}")
-        if details:
-            print(f"    {details}")
-        if not success and response_data:
-            print(f"    Response: {json.dumps(response_data, indent=2)}")
+    def log_fail(self, test_name, error):
+        print(f"❌ FAIL: {test_name} - {error}")
+        self.failed += 1
+        self.errors.append(f"{test_name}: {error}")
     
-    async def make_request(self, method: str, endpoint: str, data: Dict = None) -> tuple[bool, Dict]:
-        """Make HTTP request and return (success, response_data)"""
-        url = f"{API_BASE}{endpoint}"
-        try:
-            async with self.session.request(method, url, json=data) as response:
-                response_data = await response.json()
-                return response.status < 400, response_data
-        except Exception as e:
-            return False, {"error": str(e)}
-    
-    async def test_1_create_task_with_advanced_scheduling(self):
-        """Test creating task with all advanced scheduling fields"""
-        test_data = {
-            "title": "Morning Run",
-            "text_content": "Run 5km",
-            "category": "zadania",
-            "is_recurring": True,
-            "recurrence_pattern": "custom",
-            "recurrence_days": [0, 2, 4],  # Monday, Wednesday, Friday
-            "scheduled_time": "06:00",
-            "recurrence_end_date": "2026-04-30",
-            "scheduled_date": "2026-03-16"
-        }
-        
-        success, response = await self.make_request("POST", "/notes", test_data)
-        
-        if success:
-            task_id = response.get("id")
-            if task_id:
-                self.created_task_ids.append(task_id)
-            
-            # Verify all fields are correctly saved
-            expected_fields = ["is_recurring", "recurrence_pattern", "recurrence_days", 
-                             "scheduled_time", "recurrence_end_date", "scheduled_date"]
-            missing_fields = [field for field in expected_fields if field not in response]
-            
-            if missing_fields:
-                self.log_result(
-                    "Create Advanced Task", False,
-                    f"Missing fields in response: {missing_fields}", response
-                )
-            else:
-                # Verify values match
-                matches = all([
-                    response.get("is_recurring") == True,
-                    response.get("recurrence_pattern") == "custom",
-                    response.get("recurrence_days") == [0, 2, 4],
-                    response.get("scheduled_time") == "06:00",
-                    response.get("recurrence_end_date") == "2026-04-30",
-                    response.get("scheduled_date") == "2026-03-16"
-                ])
-                
-                if matches:
-                    self.log_result(
-                        "Create Advanced Task", True,
-                        f"Task created with ID: {task_id[:8]}..., all scheduling fields correct"
-                    )
-                else:
-                    self.log_result(
-                        "Create Advanced Task", False,
-                        "Some scheduling field values don't match", response
-                    )
-        else:
-            self.log_result("Create Advanced Task", False, "Failed to create task", response)
-    
-    async def test_2_create_daily_recurring_task(self):
-        """Test creating task with simple daily recurrence"""
-        test_data = {
-            "title": "Daily Vitamins",
-            "text_content": "Take vitamins",
-            "category": "zadania",
-            "is_recurring": True,
-            "recurrence_pattern": "daily",
-            "scheduled_time": "09:00"
-        }
-        
-        success, response = await self.make_request("POST", "/notes", test_data)
-        
-        if success:
-            task_id = response.get("id")
-            if task_id:
-                self.created_task_ids.append(task_id)
-            
-            if (response.get("is_recurring") == True and 
-                response.get("recurrence_pattern") == "daily" and
-                response.get("scheduled_time") == "09:00"):
-                self.log_result(
-                    "Create Daily Task", True,
-                    f"Daily recurring task created with ID: {task_id[:8]}..."
-                )
-            else:
-                self.log_result("Create Daily Task", False, "Incorrect daily task fields", response)
-        else:
-            self.log_result("Create Daily Task", False, "Failed to create daily task", response)
-    
-    async def test_3_create_weekdays_recurring_task(self):
-        """Test creating task with weekdays recurrence pattern"""
-        test_data = {
-            "title": "Stand-up meeting",
-            "text_content": "Daily standup",
-            "category": "zadania",
-            "is_recurring": True,
-            "recurrence_pattern": "weekdays",
-            "scheduled_time": "10:00"
-        }
-        
-        success, response = await self.make_request("POST", "/notes", test_data)
-        
-        if success:
-            task_id = response.get("id")
-            if task_id:
-                self.created_task_ids.append(task_id)
-            
-            if (response.get("is_recurring") == True and 
-                response.get("recurrence_pattern") == "weekdays" and
-                response.get("scheduled_time") == "10:00"):
-                self.log_result(
-                    "Create Weekdays Task", True,
-                    f"Weekdays recurring task created with ID: {task_id[:8]}..."
-                )
-            else:
-                self.log_result("Create Weekdays Task", False, "Incorrect weekdays task fields", response)
-        else:
-            self.log_result("Create Weekdays Task", False, "Failed to create weekdays task", response)
-    
-    async def test_4_get_tasks_for_dates(self):
-        """Test getting tasks for specific dates with different recurrence patterns"""
-        dates_to_test = [
-            ("2026-03-16", "Monday", "should include daily + custom (Mon/Wed/Fri) tasks"),
-            ("2026-03-17", "Tuesday", "should include daily + weekdays but NOT custom Mon/Wed/Fri"),
-            ("2026-03-18", "Wednesday", "should include daily + weekdays + custom tasks"),
-            ("2026-03-21", "Saturday", "should include daily but NOT weekdays and NOT custom")
-        ]
-        
-        for date, day_name, expected in dates_to_test:
-            success, response = await self.make_request("GET", f"/tasks/for-date/{date}")
-            
-            if success:
-                tasks = response if isinstance(response, list) else []
-                
-                # Count different types of tasks
-                daily_tasks = [t for t in tasks if t.get("recurrence_pattern") == "daily"]
-                weekdays_tasks = [t for t in tasks if t.get("recurrence_pattern") == "weekdays"]
-                custom_tasks = [t for t in tasks if t.get("recurrence_pattern") == "custom"]
-                
-                # Analyze based on day
-                day_of_week = datetime.strptime(date, "%Y-%m-%d").weekday()
-                
-                details = f"{day_name} ({date}): {len(tasks)} total tasks - "
-                details += f"Daily: {len(daily_tasks)}, Weekdays: {len(weekdays_tasks)}, Custom: {len(custom_tasks)}"
-                
-                # Verify expectations
-                correct = True
-                if day_of_week < 5:  # Monday-Friday
-                    if len(weekdays_tasks) == 0:
-                        correct = False
-                        details += " | ERROR: Missing weekdays tasks on business day"
-                else:  # Weekend
-                    if len(weekdays_tasks) > 0:
-                        correct = False
-                        details += " | ERROR: Weekdays tasks appearing on weekend"
-                
-                # Check custom pattern (Mon=0, Wed=2, Fri=4)
-                if day_of_week in [0, 2, 4]:  # Mon, Wed, Fri
-                    if len(custom_tasks) == 0:
-                        details += " | WARNING: Expected custom tasks on Mon/Wed/Fri"
-                else:
-                    if len(custom_tasks) > 0:
-                        details += " | WARNING: Custom tasks appearing on non-Mon/Wed/Fri"
-                
-                self.log_result(f"Tasks for {day_name}", correct, details)
-            else:
-                self.log_result(f"Tasks for {day_name}", False, f"Failed to get tasks for {date}", response)
-    
-    async def test_5_chat_based_task_modification(self):
-        """Test AI-powered chat-based task modification"""
-        test_message = {
-            "user_message": "Dodaj zadanie 'Wizyta u dentysty' na piątek 2026-03-20 o 14:30"
-        }
-        
-        success, response = await self.make_request("POST", "/tasks/chat-modify", test_message)
-        
-        if success:
-            operations = response.get("operations_executed", [])
-            ai_response = response.get("ai_response", "")
-            
-            if operations and any("Utworzono" in op for op in operations):
-                self.log_result(
-                    "Chat Task Modification", True,
-                    f"Successfully executed: {operations[0]}, AI response: {ai_response[:50]}..."
-                )
-                
-                # Try to find the created task to add to cleanup list
-                if "raw_operations" in response:
-                    for op in response["raw_operations"]:
-                        if op.get("action") == "create":
-                            # The task should be created, try to find it by title
-                            find_success, find_response = await self.make_request("GET", "/notes/library?category=zadania")
-                            if find_success:
-                                notes = find_response.get("notes", [])
-                                dental_task = next((n for n in notes if "dentysty" in n.get("title", "").lower()), None)
-                                if dental_task:
-                                    self.created_task_ids.append(dental_task.get("id"))
-            else:
-                self.log_result(
-                    "Chat Task Modification", False,
-                    f"No creation operation found. Response: {response}"
-                )
-        else:
-            self.log_result("Chat Task Modification", False, "Failed to modify tasks via chat", response)
-    
-    async def test_6_task_completion_toggle(self):
-        """Test task completion and uncompletion"""
-        if not self.created_task_ids:
-            self.log_result("Task Completion Toggle", False, "No tasks available to test completion")
-            return
-        
-        task_id = self.created_task_ids[0]
-        
-        # Test complete task
-        success, response = await self.make_request("PUT", f"/tasks/{task_id}/complete")
-        if success and response.get("is_completed") == True:
-            self.log_result("Task Complete", True, f"Task {task_id[:8]}... marked as completed")
-            
-            # Test uncomplete task
-            success, response = await self.make_request("PUT", f"/tasks/{task_id}/uncomplete")
-            if success and response.get("is_completed") == False:
-                self.log_result("Task Uncomplete", True, f"Task {task_id[:8]}... marked as not completed")
-            else:
-                self.log_result("Task Uncomplete", False, "Failed to uncomplete task", response)
-        else:
-            self.log_result("Task Complete", False, "Failed to complete task", response)
-    
-    async def test_7_notes_library_with_tasks(self):
-        """Test notes library endpoint specifically for tasks (zadania category)"""
-        success, response = await self.make_request("GET", "/notes/library?category=zadania")
-        
-        if success:
-            total = response.get("total", 0)
-            notes = response.get("notes", [])
-            all_tags = response.get("all_tags", [])
-            
-            # Verify all returned notes are tasks (zadania category)
-            task_notes = [n for n in notes if n.get("category") == "zadania"]
-            
-            # Check for scheduling fields in tasks
-            tasks_with_scheduling = [
-                n for n in task_notes 
-                if any([n.get("recurrence_days"), n.get("scheduled_time"), n.get("recurrence_end_date")])
-            ]
-            
-            details = f"Total: {total}, Tasks: {len(task_notes)}, With scheduling: {len(tasks_with_scheduling)}, Tags: {len(all_tags)}"
-            
-            if len(task_notes) == len(notes):  # All notes are tasks
-                self.log_result("Notes Library Tasks", True, details)
-            else:
-                self.log_result(
-                    "Notes Library Tasks", False, 
-                    f"Expected only tasks but found mixed categories. {details}"
-                )
-        else:
-            self.log_result("Notes Library Tasks", False, "Failed to get notes library", response)
-    
-    async def test_8_create_non_task_note(self):
-        """Test creating a non-task note (przemyslenia category)"""
-        test_data = {
-            "title": "My thoughts",
-            "text_content": "Feeling good today",
-            "category": "przemyslenia"
-        }
-        
-        success, response = await self.make_request("POST", "/notes", test_data)
-        
-        if success:
-            note_id = response.get("id")
-            if note_id:
-                self.created_task_ids.append(note_id)  # For cleanup
-            
-            # Verify is_recurring defaults to false and category is correct
-            if (response.get("category") == "przemyslenia" and 
-                response.get("is_recurring") == False):
-                self.log_result(
-                    "Create Non-Task Note", True,
-                    f"Note created with ID: {note_id[:8]}..., category: przemyslenia, not recurring"
-                )
-            else:
-                self.log_result("Create Non-Task Note", False, "Incorrect non-task note properties", response)
-        else:
-            self.log_result("Create Non-Task Note", False, "Failed to create non-task note", response)
-    
-    async def test_9_delete_task(self):
-        """Test deleting a task"""
-        if not self.created_task_ids:
-            self.log_result("Delete Task", False, "No tasks available to delete")
-            return
-        
-        task_id = self.created_task_ids[-1]  # Delete the last created task
-        
-        success, response = await self.make_request("DELETE", f"/notes/{task_id}")
-        
-        if success:
-            # Verify task is actually deleted by trying to get it
-            get_success, get_response = await self.make_request("GET", f"/notes/{task_id}")
-            
-            if not get_success and get_response.get("detail") == "Note not found":
-                self.log_result("Delete Task", True, f"Task {task_id[:8]}... successfully deleted")
-                self.created_task_ids.remove(task_id)  # Remove from cleanup list
-            else:
-                self.log_result("Delete Task", False, "Task still exists after deletion", get_response)
-        else:
-            self.log_result("Delete Task", False, "Failed to delete task", response)
-    
-    async def cleanup_created_tasks(self):
-        """Clean up any tasks created during testing"""
-        print("\n🧹 Cleaning up created tasks...")
-        for task_id in self.created_task_ids:
-            try:
-                success, _ = await self.make_request("DELETE", f"/notes/{task_id}")
-                if success:
-                    print(f"   ✅ Deleted task {task_id[:8]}...")
-                else:
-                    print(f"   ❌ Failed to delete task {task_id[:8]}...")
-            except Exception as e:
-                print(f"   ⚠️ Error deleting task {task_id[:8]}...: {e}")
-    
-    async def run_all_tests(self):
-        """Run all task scheduling tests in sequence"""
-        print("🧪 Starting Advanced Task Scheduling Backend Tests")
-        print(f"📡 API Base URL: {API_BASE}")
-        print("=" * 60)
-        
-        # Run all tests
-        await self.test_1_create_task_with_advanced_scheduling()
-        await self.test_2_create_daily_recurring_task()
-        await self.test_3_create_weekdays_recurring_task()
-        await self.test_4_get_tasks_for_dates()
-        await self.test_5_chat_based_task_modification()
-        await self.test_6_task_completion_toggle()
-        await self.test_7_notes_library_with_tasks()
-        await self.test_8_create_non_task_note()
-        await self.test_9_delete_task()
-        
-        # Cleanup
-        await self.cleanup_created_tasks()
-        
-        # Summary
-        print("\n" + "=" * 60)
-        print("📊 TEST SUMMARY")
-        print("=" * 60)
-        
-        passed = sum(1 for r in self.test_results if r["success"])
-        total = len(self.test_results)
-        
-        print(f"Total Tests: {total}")
-        print(f"Passed: {passed} ✅")
-        print(f"Failed: {total - passed} ❌")
-        print(f"Success Rate: {(passed/total)*100:.1f}%")
-        
-        # Show failed tests
-        failed_tests = [r for r in self.test_results if not r["success"]]
-        if failed_tests:
-            print("\n❌ FAILED TESTS:")
-            for test in failed_tests:
-                print(f"  - {test['test']}: {test['details']}")
-        
-        return passed == total
+    def summary(self):
+        total = self.passed + self.failed
+        print(f"\n{'='*60}")
+        print(f"TEST SUMMARY: {self.passed}/{total} passed")
+        if self.errors:
+            print(f"\nFAILED TESTS:")
+            for error in self.errors:
+                print(f"  - {error}")
+        print(f"{'='*60}")
+        return self.failed == 0
 
-async def main():
-    """Main test runner"""
+def test_user_registration():
+    """Test user registration endpoint"""
+    results = TestResults()
+    
+    # Generate unique email for this test run
+    import time
+    timestamp = str(int(time.time()))
+    test_email = f"tester1_{timestamp}@app.pl"
+    
+    # Test 1: Valid registration
     try:
-        async with TaskSchedulingTester() as tester:
-            success = await tester.run_all_tests()
-            return 0 if success else 1
+        response = requests.post(f"{API_BASE}/auth/register", json={
+            "email": test_email,
+            "password": "securepass123",
+            "name": "Tester One"
+        })
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "token" in data and "user" in data:
+                user = data["user"]
+                if "id" in user and "email" in user and "name" in user:
+                    results.log_pass("User registration with valid data")
+                    return results, data["token"], user["id"], test_email
+                else:
+                    results.log_fail("User registration", "Missing user fields in response")
+            else:
+                results.log_fail("User registration", "Missing token or user in response")
+        else:
+            results.log_fail("User registration", f"Status {response.status_code}: {response.text}")
     except Exception as e:
-        print(f"❌ CRITICAL ERROR: {e}")
-        return 1
+        results.log_fail("User registration", f"Request failed: {e}")
+        return results, None, None, None
+    
+    return results, None, None, None
+
+def test_user_login(test_email):
+    """Test user login endpoint"""
+    results = TestResults()
+    
+    # Test login with registered user
+    try:
+        response = requests.post(f"{API_BASE}/auth/login", json={
+            "email": test_email,
+            "password": "securepass123"
+        })
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "token" in data and "user" in data:
+                results.log_pass("User login with valid credentials")
+                return results, data["token"]
+            else:
+                results.log_fail("User login", "Missing token or user in response")
+        else:
+            results.log_fail("User login", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        results.log_fail("User login", f"Request failed: {e}")
+        return results, None
+    
+    return results, None
+
+def test_duplicate_registration(test_email):
+    """Test duplicate email registration"""
+    results = TestResults()
+    
+    try:
+        response = requests.post(f"{API_BASE}/auth/register", json={
+            "email": test_email,
+            "password": "securepass123",
+            "name": "Tester One Duplicate"
+        })
+        
+        if response.status_code == 400:
+            results.log_pass("Duplicate registration returns 400")
+        else:
+            results.log_fail("Duplicate registration", f"Expected 400, got {response.status_code}")
+    except Exception as e:
+        results.log_fail("Duplicate registration", f"Request failed: {e}")
+    
+    return results
+
+def test_auth_me(token):
+    """Test /auth/me endpoint"""
+    results = TestResults()
+    
+    try:
+        headers = {"Authorization": f"Bearer {token}"}
+        response = requests.get(f"{API_BASE}/auth/me", headers=headers)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "id" in data and "email" in data and "name" in data:
+                results.log_pass("Auth me endpoint returns user data")
+            else:
+                results.log_fail("Auth me", "Missing user fields in response")
+        else:
+            results.log_fail("Auth me", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        results.log_fail("Auth me", f"Request failed: {e}")
+    
+    return results
+
+def test_protected_endpoints_without_token():
+    """Test protected endpoints without authentication"""
+    results = TestResults()
+    
+    # Test notes library endpoint
+    try:
+        response = requests.get(f"{API_BASE}/notes/library?period=all")
+        if response.status_code == 401:
+            results.log_pass("Notes library returns 401 without token")
+        else:
+            results.log_fail("Notes library protection", f"Expected 401, got {response.status_code}")
+    except Exception as e:
+        results.log_fail("Notes library protection", f"Request failed: {e}")
+    
+    # Test moods endpoint
+    try:
+        response = requests.get(f"{API_BASE}/moods")
+        if response.status_code == 401:
+            results.log_pass("Moods endpoint returns 401 without token")
+        else:
+            results.log_fail("Moods endpoint protection", f"Expected 401, got {response.status_code}")
+    except Exception as e:
+        results.log_fail("Moods endpoint protection", f"Request failed: {e}")
+    
+    return results
+
+def test_data_isolation(test_email):
+    """Test data isolation between users"""
+    results = TestResults()
+    
+    # Generate unique email for second user
+    import time
+    timestamp = str(int(time.time()))
+    test_email2 = f"tester2_{timestamp}@app.pl"
+    
+    # Register second user
+    try:
+        response = requests.post(f"{API_BASE}/auth/register", json={
+            "email": test_email2,
+            "password": "securepass123",
+            "name": "Tester Two"
+        })
+        
+        if response.status_code != 200:
+            results.log_fail("User 2 registration", f"Status {response.status_code}: {response.text}")
+            return results
+        
+        user2_token = response.json()["token"]
+        user2_id = response.json()["user"]["id"]
+        results.log_pass("Second user registration")
+    except Exception as e:
+        results.log_fail("User 2 registration", f"Request failed: {e}")
+        return results
+    
+    # Get user 1 token again
+    try:
+        response = requests.post(f"{API_BASE}/auth/login", json={
+            "email": test_email,
+            "password": "securepass123"
+        })
+        user1_token = response.json()["token"]
+    except Exception as e:
+        results.log_fail("User 1 re-login", f"Request failed: {e}")
+        return results
+    
+    # Create note as User 1
+    try:
+        headers = {"Authorization": f"Bearer {user1_token}"}
+        response = requests.post(f"{API_BASE}/notes", headers=headers, json={
+            "title": "Notatka User 1",
+            "text_content": "Prywatna treść",
+            "category": "przemyslenia"
+        })
+        
+        if response.status_code == 200:
+            results.log_pass("User 1 note creation")
+        else:
+            results.log_fail("User 1 note creation", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        results.log_fail("User 1 note creation", f"Request failed: {e}")
+    
+    # Create note as User 2
+    try:
+        headers = {"Authorization": f"Bearer {user2_token}"}
+        response = requests.post(f"{API_BASE}/notes", headers=headers, json={
+            "title": "Notatka User 2",
+            "text_content": "Sekretna treść",
+            "category": "przemyslenia"
+        })
+        
+        if response.status_code == 200:
+            results.log_pass("User 2 note creation")
+        else:
+            results.log_fail("User 2 note creation", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        results.log_fail("User 2 note creation", f"Request failed: {e}")
+    
+    # Check User 1 can only see their notes
+    try:
+        headers = {"Authorization": f"Bearer {user1_token}"}
+        response = requests.get(f"{API_BASE}/notes/library?period=all", headers=headers)
+        
+        if response.status_code == 200:
+            data = response.json()
+            notes = data.get("notes", [])
+            user1_notes = [n for n in notes if "User 1" in n.get("title", "")]
+            user2_notes = [n for n in notes if "User 2" in n.get("title", "")]
+            
+            if len(user1_notes) > 0 and len(user2_notes) == 0:
+                results.log_pass("User 1 data isolation - only sees own notes")
+            else:
+                results.log_fail("User 1 data isolation", f"Found {len(user1_notes)} own notes, {len(user2_notes)} other user notes")
+        else:
+            results.log_fail("User 1 notes fetch", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        results.log_fail("User 1 notes fetch", f"Request failed: {e}")
+    
+    # Check User 2 can only see their notes
+    try:
+        headers = {"Authorization": f"Bearer {user2_token}"}
+        response = requests.get(f"{API_BASE}/notes/library?period=all", headers=headers)
+        
+        if response.status_code == 200:
+            data = response.json()
+            notes = data.get("notes", [])
+            user1_notes = [n for n in notes if "User 1" in n.get("title", "")]
+            user2_notes = [n for n in notes if "User 2" in n.get("title", "")]
+            
+            if len(user2_notes) > 0 and len(user1_notes) == 0:
+                results.log_pass("User 2 data isolation - only sees own notes")
+            else:
+                results.log_fail("User 2 data isolation", f"Found {len(user2_notes)} own notes, {len(user1_notes)} other user notes")
+        else:
+            results.log_fail("User 2 notes fetch", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        results.log_fail("User 2 notes fetch", f"Request failed: {e}")
+    
+    return results, user1_token, user2_token
+
+def test_semantic_search(user1_token, user2_token):
+    """Test semantic search with user isolation"""
+    results = TestResults()
+    
+    # Create specific notes for User 1
+    try:
+        headers = {"Authorization": f"Bearer {user1_token}"}
+        
+        # Note about coffee meeting
+        response = requests.post(f"{API_BASE}/notes", headers=headers, json={
+            "title": "Spotkanie z Karoliną",
+            "text_content": "Umówiliśmy się na kawę jutro o 15",
+            "category": "przemyslenia"
+        })
+        
+        if response.status_code == 200:
+            results.log_pass("User 1 coffee note creation")
+        else:
+            results.log_fail("User 1 coffee note creation", f"Status {response.status_code}")
+        
+        # Shopping list note
+        response = requests.post(f"{API_BASE}/notes", headers=headers, json={
+            "title": "Lista zakupów",
+            "text_content": "Kupić mleko, chleb i masło",
+            "category": "zadania"
+        })
+        
+        if response.status_code == 200:
+            results.log_pass("User 1 shopping note creation")
+        else:
+            results.log_fail("User 1 shopping note creation", f"Status {response.status_code}")
+            
+    except Exception as e:
+        results.log_fail("User 1 notes for search", f"Request failed: {e}")
+        return results
+    
+    # Wait a moment for ChromaDB indexing
+    import time
+    time.sleep(2)
+    
+    # Search as User 1 for "kawa" (coffee)
+    try:
+        headers = {"Authorization": f"Bearer {user1_token}"}
+        response = requests.get(f"{API_BASE}/notes/search?q=kawa", headers=headers)
+        
+        if response.status_code == 200:
+            data = response.json()
+            search_results = data.get("results", [])
+            
+            # Check if coffee meeting note is found
+            coffee_found = any("Karoliną" in result.get("title", "") for result in search_results)
+            
+            if coffee_found:
+                results.log_pass("User 1 semantic search finds coffee note")
+            else:
+                results.log_fail("User 1 semantic search", "Coffee note not found in search results")
+        else:
+            results.log_fail("User 1 semantic search", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        results.log_fail("User 1 semantic search", f"Request failed: {e}")
+    
+    # Search as User 2 for "kawa" (should only return User 2's notes, not User 1's)
+    try:
+        headers = {"Authorization": f"Bearer {user2_token}"}
+        response = requests.get(f"{API_BASE}/notes/search?q=kawa", headers=headers)
+        
+        if response.status_code == 200:
+            data = response.json()
+            search_results = data.get("results", [])
+            
+            # Check that no User 1 notes are returned (proper isolation)
+            user1_notes_found = any("User 1" in result.get("title", "") or "Karoliną" in result.get("title", "") for result in search_results)
+            
+            if not user1_notes_found:
+                results.log_pass("User 2 semantic search isolation - no User 1 notes returned")
+            else:
+                results.log_fail("User 2 semantic search isolation", "Found User 1 notes in User 2's search results")
+        else:
+            results.log_fail("User 2 semantic search", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        results.log_fail("User 2 semantic search", f"Request failed: {e}")
+    
+    return results
+
+def test_mood_entry_with_auth(token):
+    """Test mood entry creation with authentication"""
+    results = TestResults()
+    
+    try:
+        headers = {"Authorization": f"Bearer {token}"}
+        response = requests.post(f"{API_BASE}/moods", headers=headers, json={
+            "date": "2026-04-19",
+            "time_of_day": "morning",
+            "layers": {
+                "overall": 4,
+                "energy": 3,
+                "stress": 2,
+                "productivity": 4,
+                "social": 3
+            },
+            "notes": "Test nastroju"
+        })
+        
+        if response.status_code == 200:
+            results.log_pass("Mood entry creation with auth")
+            
+            # Test retrieving the mood
+            response = requests.get(f"{API_BASE}/moods/date/2026-04-19", headers=headers)
+            if response.status_code == 200:
+                data = response.json()
+                if "morning" in data and data["morning"] is not None:
+                    results.log_pass("Mood entry retrieval by date")
+                else:
+                    results.log_fail("Mood entry retrieval", "Morning mood not found")
+            else:
+                results.log_fail("Mood entry retrieval", f"Status {response.status_code}")
+        else:
+            results.log_fail("Mood entry creation", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        results.log_fail("Mood entry with auth", f"Request failed: {e}")
+    
+    return results
+
+def test_invalid_token():
+    """Test endpoints with invalid token"""
+    results = TestResults()
+    
+    try:
+        headers = {"Authorization": "Bearer invalid_token"}
+        response = requests.get(f"{API_BASE}/auth/me", headers=headers)
+        
+        if response.status_code == 401:
+            results.log_pass("Invalid token returns 401")
+        else:
+            results.log_fail("Invalid token handling", f"Expected 401, got {response.status_code}")
+    except Exception as e:
+        results.log_fail("Invalid token test", f"Request failed: {e}")
+    
+    return results
+
+def main():
+    """Run all authentication and semantic search tests"""
+    print("🚀 Starting Comprehensive Backend API Tests")
+    print(f"Backend URL: {BACKEND_URL}")
+    print(f"API Base: {API_BASE}")
+    print("="*60)
+    
+    all_results = TestResults()
+    
+    # Test 1: User Registration
+    print("\n1. Testing User Registration...")
+    reg_results, user1_token, user1_id, test_email = test_user_registration()
+    all_results.passed += reg_results.passed
+    all_results.failed += reg_results.failed
+    all_results.errors.extend(reg_results.errors)
+    
+    if not user1_token:
+        print("❌ Cannot continue without valid user token")
+        return False
+    
+    # Test 2: User Login
+    print("\n2. Testing User Login...")
+    login_results, login_token = test_user_login(test_email)
+    all_results.passed += login_results.passed
+    all_results.failed += login_results.failed
+    all_results.errors.extend(login_results.errors)
+    
+    # Test 3: Duplicate Registration
+    print("\n3. Testing Duplicate Registration...")
+    dup_results = test_duplicate_registration(test_email)
+    all_results.passed += dup_results.passed
+    all_results.failed += dup_results.failed
+    all_results.errors.extend(dup_results.errors)
+    
+    # Test 4: Auth Me
+    print("\n4. Testing Auth Me Endpoint...")
+    me_results = test_auth_me(user1_token)
+    all_results.passed += me_results.passed
+    all_results.failed += me_results.failed
+    all_results.errors.extend(me_results.errors)
+    
+    # Test 5: Protected Endpoints
+    print("\n5. Testing Protected Endpoints Without Token...")
+    protected_results = test_protected_endpoints_without_token()
+    all_results.passed += protected_results.passed
+    all_results.failed += protected_results.failed
+    all_results.errors.extend(protected_results.errors)
+    
+    # Test 6: Data Isolation
+    print("\n6. Testing Data Isolation Between Users...")
+    isolation_results, user1_token_new, user2_token = test_data_isolation(test_email)
+    all_results.passed += isolation_results.passed
+    all_results.failed += isolation_results.failed
+    all_results.errors.extend(isolation_results.errors)
+    
+    if not user2_token:
+        print("❌ Cannot test semantic search without second user")
+    else:
+        # Test 7: Semantic Search
+        print("\n7. Testing Semantic Search with User Isolation...")
+        search_results = test_semantic_search(user1_token_new or user1_token, user2_token)
+        all_results.passed += search_results.passed
+        all_results.failed += search_results.failed
+        all_results.errors.extend(search_results.errors)
+    
+    # Test 8: Mood Entry with Auth
+    print("\n8. Testing Mood Entry with Authentication...")
+    mood_results = test_mood_entry_with_auth(user1_token)
+    all_results.passed += mood_results.passed
+    all_results.failed += mood_results.failed
+    all_results.errors.extend(mood_results.errors)
+    
+    # Test 9: Invalid Token
+    print("\n9. Testing Invalid Token Handling...")
+    invalid_results = test_invalid_token()
+    all_results.passed += invalid_results.passed
+    all_results.failed += invalid_results.failed
+    all_results.errors.extend(invalid_results.errors)
+    
+    # Final Summary
+    success = all_results.summary()
+    return success
 
 if __name__ == "__main__":
-    exit_code = asyncio.run(main())
-    sys.exit(exit_code)
+    success = main()
+    sys.exit(0 if success else 1)

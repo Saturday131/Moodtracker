@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useAuth } from './auth-context';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -39,6 +40,7 @@ interface Settings {
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const { authHeaders, logout } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState<Settings>({
@@ -265,6 +267,15 @@ export default function SettingsScreen() {
             <Text style={styles.savingText}>Zapisywanie...</Text>
           </View>
         )}
+
+        {/* Logout */}
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={logout}
+        >
+          <Ionicons name="log-out-outline" size={20} color="#EF4444" />
+          <Text style={styles.logoutText}>Wyloguj się</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -414,5 +425,22 @@ const styles = StyleSheet.create({
   savingText: {
     color: '#9CA3AF',
     fontSize: 14,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1F2937',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 8,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#EF444430',
+  },
+  logoutText: {
+    color: '#EF4444',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

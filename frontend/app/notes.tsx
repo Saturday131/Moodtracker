@@ -21,6 +21,7 @@ import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
 import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
+import { useAuth } from './auth-context';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -67,6 +68,7 @@ const DAY_LABELS = [
 ];
 
 export default function NotesScreen() {
+  const { authHeaders } = useAuth();
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -222,7 +224,7 @@ export default function NotesScreen() {
         url += `&category=${selectedCategory}`;
       }
 
-      const response = await fetch(url);
+      const response = await fetch(url, { headers: authHeaders() });
       if (response.ok) {
         const data = await response.json();
         setNotes(data.notes || []);
@@ -285,7 +287,7 @@ export default function NotesScreen() {
 
       const response = await fetch(`${API_URL}/api/notes`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(noteData),
       });
 
@@ -307,7 +309,7 @@ export default function NotesScreen() {
   const toggleComplete = async (noteId: string, isCompleted: boolean) => {
     try {
       const endpoint = isCompleted ? 'uncomplete' : 'complete';
-      await fetch(`${API_URL}/api/tasks/${noteId}/${endpoint}`, { method: 'PUT' });
+      await fetch(`${API_URL}/api/tasks/${noteId}/${endpoint}`, { method: 'PUT', headers: authHeaders() });
       fetchNotes();
     } catch (error) {
       Alert.alert('Błąd', 'Nie udało się zaktualizować');
@@ -325,7 +327,7 @@ export default function NotesScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await fetch(`${API_URL}/api/notes/${noteId}`, { method: 'DELETE' });
+              await fetch(`${API_URL}/api/notes/${noteId}`, { method: 'DELETE', headers: authHeaders() });
               setShowDetailModal(false);
               setSelectedNote(null);
               fetchNotes();
