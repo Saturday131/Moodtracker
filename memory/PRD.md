@@ -38,9 +38,10 @@ Mobilna aplikacja do śledzenia nastroju (Expo + FastAPI + MongoDB) z polskim UI
 ## Backlog
 
 ### P1
+- [x] Notatki głosowe — nagrywanie i zapis base64 w MongoDB, odtwarzanie w widoku szczegółowym
+- [x] Notatki z obrazkami — wybór z galerii/aparat, zapis base64 w MongoDB, podgląd w szczegółach
+- [ ] Transkrypcja audio i interpretacja AI zdjęć (następny krok)
 - [ ] Ponowne włączenie push notifications (backend-driven, np. FCM)
-- [ ] Notatki głosowe z transkrypcją
-- [ ] Notatki z obrazkami
 
 ### P2
 - [ ] Przywrócenie funkcji eksportu

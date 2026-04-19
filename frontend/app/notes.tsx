@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,11 +13,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   Switch,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
+import { Audio } from 'expo-av';
+import * as ImagePicker from 'expo-image-picker';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -25,6 +28,8 @@ interface Note {
   id: string;
   title: string | null;
   text_content: string | null;
+  voice_base64: string | null;
+  image_base64: string | null;
   category: string;
   tags: string[];
   is_completed: boolean;
@@ -84,6 +89,130 @@ export default function NotesScreen() {
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
 
+  // Media
+  const [voiceBase64, setVoiceBase64] = useState<string | null>(null);
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const durationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [playingNoteId, setPlayingNoteId] = useState<string | null>(null);
+  const soundRef = useRef<Audio.Sound | null>(null);
+
+  const startRecording = async () => {
+    try {
+      const { status } = await Audio.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Brak uprawnień', 'Zezwól na dostęp do mikrofonu');
+        return;
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      recordingRef.current = recording;
+      setIsRecording(true);
+      setRecordingDuration(0);
+      durationInterval.current = setInterval(() => setRecordingDuration(d => d + 1), 1000);
+    } catch (err) {
+      Alert.alert('Błąd', 'Nie udało się rozpocząć nagrywania');
+    }
+  };
+
+  const stopRecording = async () => {
+    if (!recordingRef.current) return;
+    try {
+      if (durationInterval.current) clearInterval(durationInterval.current);
+      setIsRecording(false);
+      await recordingRef.current.stopAndUnloadAsync();
+      const uri = recordingRef.current.getURI();
+      recordingRef.current = null;
+      if (uri) {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = (reader.result as string).split(',')[1];
+          setVoiceBase64(base64);
+        };
+        reader.readAsDataURL(blob);
+      }
+    } catch (err) {
+      Alert.alert('Błąd', 'Nie udało się zatrzymać nagrywania');
+    }
+  };
+
+  const pickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.5,
+        base64: true,
+        allowsEditing: true,
+      });
+      if (!result.canceled && result.assets[0].base64) {
+        setImageBase64(result.assets[0].base64);
+      }
+    } catch (err) {
+      Alert.alert('Błąd', 'Nie udało się wybrać zdjęcia');
+    }
+  };
+
+  const takePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Brak uprawnień', 'Zezwól na dostęp do aparatu');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        quality: 0.5,
+        base64: true,
+        allowsEditing: true,
+      });
+      if (!result.canceled && result.assets[0].base64) {
+        setImageBase64(result.assets[0].base64);
+      }
+    } catch (err) {
+      Alert.alert('Błąd', 'Nie udało się zrobić zdjęcia');
+    }
+  };
+
+  const playVoice = async (base64: string, noteId: string) => {
+    try {
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+      if (playingNoteId === noteId) {
+        setPlayingNoteId(null);
+        return;
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: `data:audio/m4a;base64,${base64}` },
+        { shouldPlay: true }
+      );
+      soundRef.current = sound;
+      setPlayingNoteId(noteId);
+      sound.setOnPlaybackStatusUpdate((status: any) => {
+        if (status.didJustFinish) {
+          setPlayingNoteId(null);
+          sound.unloadAsync();
+          soundRef.current = null;
+        }
+      });
+    } catch (err) {
+      Alert.alert('Błąd', 'Nie udało się odtworzyć nagrania');
+    }
+  };
+
+  const formatDuration = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
   const fetchNotes = async () => {
     try {
       if (!refreshing) setLoading(true);
@@ -125,11 +254,14 @@ export default function NotesScreen() {
     setRecurrenceEndDate('');
     setScheduledDate('');
     setScheduledTime('');
+    setVoiceBase64(null);
+    setImageBase64(null);
+    setRecordingDuration(0);
   };
 
   const saveNote = async () => {
-    if (!newContent.trim()) {
-      Alert.alert('Pusta notatka', 'Napisz coś zanim zapiszesz');
+    if (!newContent.trim() && !voiceBase64 && !imageBase64) {
+      Alert.alert('Pusta notatka', 'Dodaj treść, nagranie lub zdjęcie');
       return;
     }
 
@@ -138,9 +270,11 @@ export default function NotesScreen() {
       const isTask = newCategory === 'zadania';
       const noteData: any = {
         title: newTitle.trim() || null,
-        text_content: newContent.trim(),
+        text_content: newContent.trim() || null,
         category: newCategory,
         tags: [],
+        voice_base64: voiceBase64,
+        image_base64: imageBase64,
         is_recurring: isTask && isRecurring,
         recurrence_pattern: isTask && isRecurring ? recurrencePattern : null,
         recurrence_days: isTask && isRecurring && recurrencePattern === 'custom' ? recurrenceDays : [],
@@ -290,6 +424,31 @@ export default function NotesScreen() {
             <Text style={[styles.noteContent, note.is_completed && styles.textCompleted]} numberOfLines={2}>
               {note.text_content}
             </Text>
+
+            {/* Media indicators */}
+            {(note.voice_base64 || note.image_base64) && (
+              <View style={styles.mediaIndicators}>
+                {note.voice_base64 && (
+                  <TouchableOpacity
+                    style={styles.mediaChip}
+                    onPress={() => playVoice(note.voice_base64!, note.id)}
+                  >
+                    <Ionicons
+                      name={playingNoteId === note.id ? 'pause' : 'play'}
+                      size={14}
+                      color="#22C55E"
+                    />
+                    <Text style={styles.mediaChipText}>Nagranie</Text>
+                  </TouchableOpacity>
+                )}
+                {note.image_base64 && (
+                  <View style={styles.mediaChip}>
+                    <Ionicons name="image" size={14} color="#3B82F6" />
+                    <Text style={[styles.mediaChipText, { color: '#60A5FA' }]}>Zdjęcie</Text>
+                  </View>
+                )}
+              </View>
+            )}
 
             {note.is_recurring && note.recurrence_pattern && (
               <View style={styles.recurrenceInfoRow}>
@@ -484,6 +643,73 @@ export default function NotesScreen() {
                 multiline
                 textAlignVertical="top"
               />
+            </View>
+
+            {/* Media Attachments */}
+            <View style={styles.formSection}>
+              <Text style={styles.sectionLabel}>Załączniki</Text>
+              <View style={styles.mediaButtonsRow}>
+                {/* Voice Recording */}
+                <TouchableOpacity
+                  data-testid="record-voice-button"
+                  style={[styles.mediaButton, isRecording && styles.mediaButtonActive]}
+                  onPress={isRecording ? stopRecording : startRecording}
+                >
+                  <Ionicons
+                    name={isRecording ? 'stop-circle' : 'mic'}
+                    size={22}
+                    color={isRecording ? '#EF4444' : '#22C55E'}
+                  />
+                  <Text style={[styles.mediaButtonText, isRecording && { color: '#EF4444' }]}>
+                    {isRecording ? `Nagrywanie ${formatDuration(recordingDuration)}` : 'Nagraj głos'}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Image Picker */}
+                <TouchableOpacity
+                  data-testid="pick-image-button"
+                  style={styles.mediaButton}
+                  onPress={pickImage}
+                >
+                  <Ionicons name="images" size={22} color="#3B82F6" />
+                  <Text style={styles.mediaButtonText}>Galeria</Text>
+                </TouchableOpacity>
+
+                {/* Camera */}
+                <TouchableOpacity
+                  data-testid="take-photo-button"
+                  style={styles.mediaButton}
+                  onPress={takePhoto}
+                >
+                  <Ionicons name="camera" size={22} color="#F59E0B" />
+                  <Text style={styles.mediaButtonText}>Aparat</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Voice preview */}
+              {voiceBase64 && (
+                <View style={styles.mediaPreview}>
+                  <Ionicons name="musical-notes" size={18} color="#22C55E" />
+                  <Text style={styles.mediaPreviewText}>Nagranie dołączone</Text>
+                  <TouchableOpacity onPress={() => setVoiceBase64(null)}>
+                    <Ionicons name="close-circle" size={20} color="#EF4444" />
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Image preview */}
+              {imageBase64 && (
+                <View style={styles.mediaPreview}>
+                  <Image
+                    source={{ uri: `data:image/jpeg;base64,${imageBase64}` }}
+                    style={styles.imagePreviewThumb}
+                  />
+                  <Text style={styles.mediaPreviewText}>Zdjęcie dołączone</Text>
+                  <TouchableOpacity onPress={() => setImageBase64(null)}>
+                    <Ionicons name="close-circle" size={20} color="#EF4444" />
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
 
             {/* Task Scheduling Options */}
@@ -699,6 +925,33 @@ export default function NotesScreen() {
               )}
 
               <Text style={styles.detailText}>{selectedNote.text_content}</Text>
+
+              {/* Voice playback in detail */}
+              {selectedNote.voice_base64 && (
+                <TouchableOpacity
+                  data-testid="detail-play-voice"
+                  style={styles.detailVoicePlayer}
+                  onPress={() => playVoice(selectedNote.voice_base64!, selectedNote.id)}
+                >
+                  <Ionicons
+                    name={playingNoteId === selectedNote.id ? 'pause-circle' : 'play-circle'}
+                    size={40}
+                    color="#22C55E"
+                  />
+                  <Text style={styles.detailVoiceText}>
+                    {playingNoteId === selectedNote.id ? 'Odtwarzanie...' : 'Odtwórz nagranie'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Image display in detail */}
+              {selectedNote.image_base64 && (
+                <Image
+                  source={{ uri: `data:image/jpeg;base64,${selectedNote.image_base64}` }}
+                  style={styles.detailImage}
+                  resizeMode="contain"
+                />
+              )}
 
               {/* Advanced scheduling details */}
               {selectedNote.category === 'zadania' && (
@@ -1185,5 +1438,87 @@ const styles = StyleSheet.create({
   },
   completeButtonTextDone: {
     color: '#22C55E',
+  },
+  mediaIndicators: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  mediaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#374151',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    gap: 4,
+  },
+  mediaChipText: {
+    color: '#4ADE80',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  mediaButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  mediaButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1F2937',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#374151',
+    gap: 4,
+  },
+  mediaButtonActive: {
+    borderColor: '#EF4444',
+    backgroundColor: '#EF444410',
+  },
+  mediaButtonText: {
+    color: '#9CA3AF',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  mediaPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#374151',
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 10,
+    gap: 8,
+  },
+  mediaPreviewText: {
+    flex: 1,
+    color: '#D1D5DB',
+    fontSize: 13,
+  },
+  imagePreviewThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: 6,
+  },
+  detailVoicePlayer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1F2937',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 16,
+    gap: 12,
+  },
+  detailVoiceText: {
+    color: '#4ADE80',
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  detailImage: {
+    width: '100%',
+    height: 300,
+    borderRadius: 12,
+    marginTop: 16,
   },
 });
