@@ -33,10 +33,7 @@ Mobilna aplikacja do śledzenia nastroju (Expo + FastAPI + MongoDB) z polskim UI
 - [x] Zadania z checkboxem (complete/uncomplete)
 - [x] Zadania powtarzalne (daily, weekdays, weekly, monthly, custom)
 - [x] Modyfikacja zadań przez AI chat
-- [x] Zaawansowane planowanie zadań:
-  - Godzina zadania (scheduled_time)
-  - Data końca powtarzania (recurrence_end_date)
-  - Wybór dni tygodnia (recurrence_days) z wzorcem "custom"
+- [x] Zaawansowane planowanie zadań (scheduled_time, recurrence_end_date, recurrence_days)
 
 ### Completed (April 2026)
 - [x] Notatki głosowe — nagrywanie i zapis base64 w MongoDB, odtwarzanie
@@ -50,12 +47,28 @@ Mobilna aplikacja do śledzenia nastroju (Expo + FastAPI + MongoDB) z polskim UI
 - [x] **Popup kalendarza do wyboru daty** — modal z siatką dni, nawigacja miesięcy, format DD-MM-YYYY
 - [x] **Scrollowalny picker godziny** — kolumny godz/min, przycisk "Potwierdź HH:MM"
 - [x] **Podgląd nagrania głosowego** — przycisk play/pause przed zapisem notatki
-- [x] Konwersja daty DD-MM-YYYY → YYYY-MM-DD przy zapisie do backendu
+- [x] **Pełna izolacja danych użytkowników (Multi-tenancy):**
+  - Wszystkie endpointy (35+) wymagają JWT auth
+  - Wszystkie zapytania MongoDB filtrują po `user_id`
+  - Funkcje pomocnicze (get_mood_context, get_notes_context, generate_daily_summary, etc.) przyjmują `user_id`
+  - Operacje chat-modify filtrują po `user_id` (create, update, delete, complete, reschedule, set_recurring)
+  - Nowe instancje (recurring, chat-created) dziedziczą `user_id` od twórcy
+  - Usunięto hardcoded "default_user" z kodu
+- [x] **Indeksy wydajnościowe MongoDB:**
+  - `users_auth`: unique na `email` i `id`
+  - `moods`: compound `{user_id, date, time_of_day}`
+  - `notes`: compound `{user_id, category, created_at}`, `{user_id, scheduled_date}`, `{user_id, is_recurring}`, unique `id`
+  - `chat_messages`: compound `{user_id, session_id, timestamp}`
+  - `daily_summaries`: compound unique `{user_id, date}`
+  - `user_settings`: unique `user_id`
+  - `user_context`: unique `user_id`
+- [x] **Migracja osieroconych danych** — automatyczne czyszczenie dokumentów bez user_id na starcie
+- [x] **Testy bezpieczeństwa** — 22/22 testów izolacji (cross-user attacks, auth enforcement, data isolation)
 
 ## Backlog
 
 ### P0
-- [ ] Interpretacja AI multimediów do ChromaDB (transkrypcja audio OpenAI Whisper + Vision dla zdjęć)
+- [ ] Interpretacja AI multimediów do ChromaDB (transkrypcja audio Whisper + Vision dla zdjęć)
 
 ### P1
 - [ ] Ponowne włączenie push notifications (backend-driven, np. FCM)
@@ -66,7 +79,7 @@ Mobilna aplikacja do śledzenia nastroju (Expo + FastAPI + MongoDB) z polskim UI
 - [ ] Refaktoryzacja server.py (routes/models)
 
 ## Key Files
-- `backend/server.py` — cała logika backendowa (auth, CRUD, AI, ChromaDB)
+- `backend/server.py` — cała logika backendowa (auth, CRUD, AI, ChromaDB, indeksy, migracja)
 - `frontend/app/auth-context.tsx` — AuthProvider, useAuth hook
 - `frontend/app/auth-screen.tsx` — ekran logowania/rejestracji
 - `frontend/app/profile-modal.tsx` — modal profilu użytkownika
