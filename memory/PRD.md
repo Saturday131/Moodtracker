@@ -9,6 +9,9 @@ Mobilna aplikacja do śledzenia nastroju (Expo + FastAPI + MongoDB) z polskim UI
 - AI Chatbot ("MoodBuddy") do analizy trendów
 - Notatki kategoryzowane: Zadania / Przemyślenia
 - System powtarzalnych zadań z zaawansowanym planowaniem
+- Notatki multimedialne (głos, zdjęcia)
+- Autoryzacja JWT z izolacją danych per użytkownik
+- Wyszukiwanie semantyczne (ChromaDB)
 
 ## Architecture
 - **Frontend**: Expo SDK 51, React Native, Expo Router
@@ -30,29 +33,31 @@ Mobilna aplikacja do śledzenia nastroju (Expo + FastAPI + MongoDB) z polskim UI
 - [x] Zadania z checkboxem (complete/uncomplete)
 - [x] Zadania powtarzalne (daily, weekdays, weekly, monthly, custom)
 - [x] Modyfikacja zadań przez AI chat
-- [x] **Zaawansowane planowanie zadań (P0 - DONE)**:
+- [x] Zaawansowane planowanie zadań:
   - Godzina zadania (scheduled_time)
   - Data końca powtarzania (recurrence_end_date)
   - Wybór dni tygodnia (recurrence_days) z wzorcem "custom"
-  - UI: pola daty, godziny, selector dni, data końca
-  - Wyświetlanie w kalendarzu: badge godziny + etykieta dni
 
 ### Completed (April 2026)
 - [x] Notatki głosowe — nagrywanie i zapis base64 w MongoDB, odtwarzanie
 - [x] Notatki z obrazkami — wybór z galerii/aparat, zapis base64, podgląd
-- [x] **System autoryzacji JWT** — rejestracja, logowanie, profil użytkownika
-- [x] **Baza wektorowa ChromaDB** — embeddingi semantyczne notatek (all-MiniLM-L6-v2)
-- [x] **Wyszukiwanie semantyczne** — endpoint `/api/notes/search?q=...`
-- [x] **Izolacja danych per użytkownik** — user_id na wszystkich endpointach, filtrowanie w ChromaDB
+- [x] System autoryzacji JWT — rejestracja, logowanie, profil użytkownika
+- [x] Baza wektorowa ChromaDB — embeddingi semantyczne notatek
+- [x] Wyszukiwanie semantyczne — endpoint `/api/notes/search?q=...`
+- [x] Izolacja danych per użytkownik
+
+### Completed (May 2026)
+- [x] **Popup kalendarza do wyboru daty** — modal z siatką dni, nawigacja miesięcy, format DD-MM-YYYY
+- [x] **Scrollowalny picker godziny** — kolumny godz/min, przycisk "Potwierdź HH:MM"
+- [x] **Podgląd nagrania głosowego** — przycisk play/pause przed zapisem notatki
+- [x] Konwersja daty DD-MM-YYYY → YYYY-MM-DD przy zapisie do backendu
 
 ## Backlog
 
+### P0
+- [ ] Interpretacja AI multimediów do ChromaDB (transkrypcja audio OpenAI Whisper + Vision dla zdjęć)
+
 ### P1
-- [x] Notatki głosowe — nagrywanie i zapis base64 w MongoDB, odtwarzanie w widoku szczegółowym
-- [x] Notatki z obrazkami — wybór z galerii/aparat, zapis base64 w MongoDB, podgląd w szczegółach
-- [x] **System auth JWT** — rejestracja/logowanie, ekran auth, AuthProvider
-- [x] **Baza wektorowa ChromaDB** — embeddingi notatek, semantic search, izolacja per user
-- [ ] Transkrypcja audio i interpretacja AI zdjęć (następny krok — OpenAI Whisper + Vision)
 - [ ] Ponowne włączenie push notifications (backend-driven, np. FCM)
 
 ### P2
@@ -66,7 +71,7 @@ Mobilna aplikacja do śledzenia nastroju (Expo + FastAPI + MongoDB) z polskim UI
 - `frontend/app/auth-screen.tsx` — ekran logowania/rejestracji
 - `frontend/app/profile-modal.tsx` — modal profilu użytkownika
 - `frontend/app/_layout.tsx` — nawigacja + auth guard
-- `frontend/app/notes.tsx` — ekran notatek z formularzem tworzenia
+- `frontend/app/notes.tsx` — ekran notatek z formularzem tworzenia (pickery daty/czasu)
 - `frontend/app/calendar.tsx` — kalendarz z listą zadań
 - `frontend/app/chat.tsx` — AI chatbot
 - `frontend/app/index.tsx` — ekran "Dziś"
