@@ -301,12 +301,14 @@ Respond ONLY in valid JSON format:
         logging.error(f"Error analyzing note: {e}")
         return {"summary": None, "keywords": [], "suggested_reminder": None}
 
-async def get_mood_context(days: int = 7) -> str:
+async def get_mood_context(days: int = 7, user_id: str = None) -> str:
     """Get mood data context for the chatbot"""
     end_date = datetime.utcnow().date()
     start_date = end_date - timedelta(days=days)
     
-    query = {"date": {"$gte": start_date.isoformat(), "$lte": end_date.isoformat()}}
+    query: dict = {"date": {"$gte": start_date.isoformat(), "$lte": end_date.isoformat()}}
+    if user_id:
+        query["user_id"] = user_id
     moods = await db.moods.find(query).sort([("date", -1), ("time_of_day", 1)]).to_list(100)
     moods = [m for m in moods if "time_of_day" in m and "layers" in m]
     
@@ -341,14 +343,15 @@ async def get_mood_context(days: int = 7) -> str:
     
     return "\n".join(context_parts)
 
-async def get_notes_context(days: int = 30) -> str:
+async def get_notes_context(days: int = 30, user_id: str = None) -> str:
     """Get notes context for the chatbot"""
     end_date = datetime.utcnow()
     start_date = end_date - timedelta(days=days)
     
-    notes = await db.notes.find({
-        "created_at": {"$gte": start_date}
-    }).sort("created_at", -1).to_list(50)
+    query: dict = {"created_at": {"$gte": start_date}}
+    if user_id:
+        query["user_id"] = user_id
+    notes = await db.notes.find(query).sort("created_at", -1).to_list(50)
     
     if not notes:
         return "No notes recorded."
@@ -384,17 +387,23 @@ async def get_notes_context(days: int = 30) -> str:
     
     return "\n".join(context_parts)
 
-async def generate_daily_summary() -> str:
+async def generate_daily_summary(user_id: str = None) -> str:
     """Generate end-of-day summary"""
     today = datetime.utcnow().date().isoformat()
     
     # Get today's moods
-    moods = await db.moods.find({"date": today}).to_list(10)
+    mood_query: dict = {"date": today}
+    if user_id:
+        mood_query["user_id"] = user_id
+    moods = await db.moods.find(mood_query).to_list(10)
     moods = [m for m in moods if "time_of_day" in m and "layers" in m]
     
     # Get today's notes
     start_of_day = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-    notes = await db.notes.find({"created_at": {"$gte": start_of_day}}).to_list(20)
+    notes_query: dict = {"created_at": {"$gte": start_of_day}}
+    if user_id:
+        notes_query["user_id"] = user_id
+    notes = await db.notes.find(notes_query).to_list(20)
     
     if not moods and not notes:
         return "📊 Daily Summary\n\nNo mood data or notes recorded today. Take a moment to check in with yourself!"
@@ -436,17 +445,20 @@ Keep it under 150 words."""
         logging.error(f"Error generating daily summary: {e}")
         return f"📊 Daily Summary\n\n{context}"
 
-async def generate_weekly_summary() -> str:
+async def generate_weekly_summary(user_id: str = None) -> str:
     """Generate weekly summary"""
-    mood_context = await get_mood_context(days=7)
-    notes_context = await get_notes_context(days=7)
+    mood_context = await get_mood_context(days=7, user_id=user_id)
+    notes_context = await get_notes_context(days=7, user_id=user_id)
     
     # Get pending reminders
     today = datetime.utcnow().date().isoformat()
-    pending = await db.notes.find({
+    reminder_query: dict = {
         "reminder_date": {"$lte": today},
         "reminder_sent": {"$ne": True}
-    }).to_list(10)
+    }
+    if user_id:
+        reminder_query["user_id"] = user_id
+    pending = await db.notes.find(reminder_query).to_list(10)
     
     pending_text = ""
     if pending:
@@ -481,13 +493,13 @@ Keep it under 250 words, warm and encouraging."""
         logging.error(f"Error generating weekly summary: {e}")
         return f"📊 Weekly Summary\n\n{mood_context}"
 
-async def learn_from_notes(user_id: str = "default_user"):
+async def learn_from_notes(user_id: str):
     """Analyze all user notes and extract tasks, topics, and patterns"""
     if not EMERGENT_LLM_KEY:
         return
     
-    # Get all notes
-    notes = await db.notes.find({}).sort("created_at", -1).to_list(100)
+    # Get all notes for this user
+    notes = await db.notes.find({"user_id": user_id}).sort("created_at", -1).to_list(100)
     if not notes:
         return
     
@@ -565,19 +577,20 @@ Respond in JSON:
     except Exception as e:
         logging.error(f"Error learning from notes: {e}")
 
-async def generate_comprehensive_daily_summary(user_id: str = "default_user") -> dict:
+async def generate_comprehensive_daily_summary(user_id: str) -> dict:
     """Generate comprehensive daily summary with mood comparison, notes, and pending tasks"""
     today = datetime.utcnow().date()
     today_str = today.isoformat()
     
     # Get today's moods
-    today_moods = await db.moods.find({"date": today_str}).to_list(10)
+    today_moods = await db.moods.find({"date": today_str, "user_id": user_id}).to_list(10)
     today_moods = [m for m in today_moods if "time_of_day" in m and "layers" in m]
     
     # Get weekly mood data for comparison
     week_start = (today - timedelta(days=7)).isoformat()
     week_moods = await db.moods.find({
-        "date": {"$gte": week_start, "$lt": today_str}
+        "date": {"$gte": week_start, "$lt": today_str},
+        "user_id": user_id
     }).to_list(100)
     week_moods = [m for m in week_moods if "time_of_day" in m and "layers" in m]
     
@@ -593,14 +606,14 @@ async def generate_comprehensive_daily_summary(user_id: str = "default_user") ->
     
     # Get today's notes
     start_of_day = datetime.combine(today, datetime.min.time())
-    today_notes = await db.notes.find({"created_at": {"$gte": start_of_day}}).to_list(50)
+    today_notes = await db.notes.find({"created_at": {"$gte": start_of_day}, "user_id": user_id}).to_list(50)
     
     # Get pending tasks from context
     user_context = await db.user_context.find_one({"user_id": user_id})
     pending_tasks = user_context.get("pending_tasks", []) if user_context else []
     
     # Get tasks from "zadania" category
-    zadania_notes = await db.notes.find({"category": "zadania"}).sort("created_at", -1).to_list(20)
+    zadania_notes = await db.notes.find({"category": "zadania", "user_id": user_id}).sort("created_at", -1).to_list(20)
     
     # Build summary data
     summary_data = {
@@ -860,15 +873,15 @@ async def get_moods_by_date(date_str: str, current_user: dict = Depends(get_curr
     return result
 
 @api_router.delete("/moods/{mood_id}")
-async def delete_mood(mood_id: str):
-    result = await db.moods.delete_one({"id": mood_id})
+async def delete_mood(mood_id: str, current_user: dict = Depends(get_current_user)):
+    result = await db.moods.delete_one({"id": mood_id, "user_id": current_user["id"]})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Mood not found")
     return {"message": "Mood deleted successfully"}
 
 @api_router.get("/moods/export/json")
-async def export_moods(start_date: Optional[str] = None, end_date: Optional[str] = None):
-    query = {}
+async def export_moods(start_date: Optional[str] = None, end_date: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    query: dict = {"user_id": current_user["id"]}
     if start_date and end_date:
         query["date"] = {"$gte": start_date, "$lte": end_date}
     moods = await db.moods.find(query).sort([("date", -1), ("time_of_day", 1)]).to_list(1000)
@@ -881,11 +894,11 @@ async def export_moods(start_date: Optional[str] = None, end_date: Optional[str]
 
 # Analytics endpoints
 @api_router.get("/analytics/summary")
-async def get_analytics_summary(days: int = 30):
+async def get_analytics_summary(days: int = 30, current_user: dict = Depends(get_current_user)):
     end_date = datetime.utcnow().date()
     start_date = end_date - timedelta(days=days)
     
-    query = {"date": {"$gte": start_date.isoformat(), "$lte": end_date.isoformat()}}
+    query: dict = {"date": {"$gte": start_date.isoformat(), "$lte": end_date.isoformat()}, "user_id": current_user["id"]}
     moods = await db.moods.find(query).to_list(1000)
     moods = [m for m in moods if "time_of_day" in m and "layers" in m]
     
@@ -950,18 +963,20 @@ async def get_analytics_summary(days: int = 30):
     }
 
 @api_router.get("/analytics/compare")
-async def compare_periods(current_days: int = 7):
+async def compare_periods(current_days: int = 7, current_user: dict = Depends(get_current_user)):
     end_date = datetime.utcnow().date()
     current_start = end_date - timedelta(days=current_days)
     previous_start = current_start - timedelta(days=current_days)
     
     current_moods = await db.moods.find({
-        "date": {"$gte": current_start.isoformat(), "$lte": end_date.isoformat()}
+        "date": {"$gte": current_start.isoformat(), "$lte": end_date.isoformat()},
+        "user_id": current_user["id"]
     }).to_list(1000)
     current_moods = [m for m in current_moods if "time_of_day" in m and "layers" in m]
     
     previous_moods = await db.moods.find({
-        "date": {"$gte": previous_start.isoformat(), "$lt": current_start.isoformat()}
+        "date": {"$gte": previous_start.isoformat(), "$lt": current_start.isoformat()},
+        "user_id": current_user["id"]
     }).to_list(1000)
     previous_moods = [m for m in previous_moods if "time_of_day" in m and "layers" in m]
     
@@ -1123,7 +1138,7 @@ async def delete_note(note_id: str, current_user: dict = Depends(get_current_use
     return {"message": "Note deleted successfully"}
 
 @api_router.put("/notes/{note_id}/reminder")
-async def update_note_reminder(note_id: str, reminder_date: Optional[str] = None, accept_suggestion: bool = False):
+async def update_note_reminder(note_id: str, reminder_date: Optional[str] = None, accept_suggestion: bool = False, current_user: dict = Depends(get_current_user)):
     """Update or accept suggested reminder for a note"""
     note = await db.notes.find_one({"id": note_id})
     if not note:
@@ -1141,20 +1156,21 @@ async def update_note_reminder(note_id: str, reminder_date: Optional[str] = None
     return Note(**updated)
 
 @api_router.get("/notes/reminders/pending")
-async def get_pending_reminders():
+async def get_pending_reminders(current_user: dict = Depends(get_current_user)):
     """Get notes with pending reminders"""
     today = datetime.utcnow().date().isoformat()
     notes = await db.notes.find({
+        "user_id": current_user["id"],
         "reminder_date": {"$lte": today},
         "$or": [{"reminder_sent": False}, {"reminder_sent": {"$exists": False}}]
     }).sort("reminder_date", 1).to_list(50)
     return [Note(**note) for note in notes]
 
 @api_router.put("/notes/reminders/{note_id}/mark-sent")
-async def mark_reminder_sent(note_id: str):
+async def mark_reminder_sent(note_id: str, current_user: dict = Depends(get_current_user)):
     """Mark a reminder as sent"""
     await db.notes.update_one(
-        {"id": note_id},
+        {"id": note_id, "user_id": current_user["id"]},
         {"$set": {"reminder_sent": True}}
     )
     return {"message": "Reminder marked as sent"}
@@ -1163,7 +1179,7 @@ async def mark_reminder_sent(note_id: str):
 @api_router.put("/tasks/{task_id}/complete")
 async def complete_task(task_id: str, current_user: dict = Depends(get_current_user)):
     """Mark a task as completed"""
-    task = await db.notes.find_one({"id": task_id, "category": "zadania"})
+    task = await db.notes.find_one({"id": task_id, "category": "zadania", "user_id": current_user["id"]})
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     
@@ -1178,7 +1194,7 @@ async def complete_task(task_id: str, current_user: dict = Depends(get_current_u
 @api_router.put("/tasks/{task_id}/uncomplete")
 async def uncomplete_task(task_id: str, current_user: dict = Depends(get_current_user)):
     """Mark a task as not completed"""
-    task = await db.notes.find_one({"id": task_id, "category": "zadania"})
+    task = await db.notes.find_one({"id": task_id, "category": "zadania", "user_id": current_user["id"]})
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     
@@ -1305,14 +1321,15 @@ async def get_tasks_for_date(date: str, current_user: dict = Depends(get_current
     return result_tasks
 
 @api_router.post("/tasks/generate-instances")
-async def generate_recurring_instances(days_ahead: int = 7):
+async def generate_recurring_instances(days_ahead: int = 7, current_user: dict = Depends(get_current_user)):
     """Generate task instances for recurring tasks for the next N days"""
     today = datetime.utcnow().date()
     generated = 0
     
     recurring_tasks = await db.notes.find({
         "category": "zadania",
-        "is_recurring": True
+        "is_recurring": True,
+        "user_id": current_user["id"]
     }).to_list(100)
     
     for task in recurring_tasks:
@@ -1370,7 +1387,9 @@ async def generate_recurring_instances(days_ahead: int = 7):
                         is_recurring=False,  # Instance is not recurring itself
                         tags=task.get("tags", [])
                     )
-                    await db.notes.insert_one(instance.dict())
+                    instance_doc = instance.dict()
+                    instance_doc["user_id"] = current_user["id"]
+                    await db.notes.insert_one(instance_doc)
                     generated += 1
     
     return {"message": f"Generated {generated} task instances", "days_ahead": days_ahead}
@@ -1388,6 +1407,7 @@ async def modify_tasks_via_chat(input: ChatTaskModification, current_user: dict 
     # Get all tasks (both regular and recurring templates)
     all_tasks = await db.notes.find({
         "category": "zadania",
+        "user_id": current_user["id"],
         "parent_task_id": {"$in": [None, ""]}  # Only get original tasks, not instances
     }).sort("created_at", -1).to_list(100)
     
@@ -1521,7 +1541,9 @@ PRZYKŁADY:
                     scheduled_date=op.get("scheduled_date"),
                     scheduled_time=op.get("scheduled_time")
                 )
-                await db.notes.insert_one(new_task.dict())
+                task_doc = new_task.dict()
+                task_doc["user_id"] = current_user["id"]
+                await db.notes.insert_one(task_doc)
                 time_str = f" o {op.get('scheduled_time')}" if op.get('scheduled_time') else ""
                 recurring_str = f" (powtarzalne: {op.get('recurrence_pattern')})" if op.get('is_recurring') else ""
                 executed.append(f"Utworzono: {op.get('title')}{time_str}{recurring_str}")
@@ -1538,7 +1560,7 @@ PRZYKŁADY:
                 if op.get("scheduled_time"):
                     update_data["scheduled_time"] = op.get("scheduled_time")
                 
-                await db.notes.update_one({"id": {"$regex": f"^{task_id}"}}, {"$set": update_data})
+                await db.notes.update_one({"id": {"$regex": f"^{task_id}"}, "user_id": current_user["id"]}, {"$set": update_data})
                 executed.append(f"Zaktualizowano zadanie")
             
             elif action == "reschedule":
@@ -1550,7 +1572,7 @@ PRZYKŁADY:
                 if op.get("new_time"):
                     update_data["scheduled_time"] = op.get("new_time")
                 
-                await db.notes.update_one({"id": {"$regex": f"^{task_id}"}}, {"$set": update_data})
+                await db.notes.update_one({"id": {"$regex": f"^{task_id}"}, "user_id": current_user["id"]}, {"$set": update_data})
                 time_str = f" o {op.get('new_time')}" if op.get('new_time') else ""
                 executed.append(f"Przesunięto na {op.get('new_date')}{time_str}")
             
@@ -1558,15 +1580,15 @@ PRZYKŁADY:
                 task_id = op.get("task_id")
                 # Delete main task and all instances
                 await db.notes.delete_many({"$or": [
-                    {"id": {"$regex": f"^{task_id}"}},
-                    {"parent_task_id": {"$regex": f"^{task_id}"}}
+                    {"id": {"$regex": f"^{task_id}"}, "user_id": current_user["id"]},
+                    {"parent_task_id": {"$regex": f"^{task_id}"}, "user_id": current_user["id"]}
                 ]})
                 executed.append(f"Usunięto zadanie")
             
             elif action == "complete":
                 task_id = op.get("task_id")
                 await db.notes.update_one(
-                    {"id": {"$regex": f"^{task_id}"}},
+                    {"id": {"$regex": f"^{task_id}"}, "user_id": current_user["id"]},
                     {"$set": {"is_completed": True, "completed_at": datetime.utcnow()}}
                 )
                 executed.append(f"Oznaczono jako wykonane")
@@ -1589,7 +1611,7 @@ PRZYKŁADY:
                     update_data["scheduled_time"] = op.get("scheduled_time")
                 
                 await db.notes.update_one(
-                    {"id": {"$regex": f"^{task_id}"}},
+                    {"id": {"$regex": f"^{task_id}"}, "user_id": current_user["id"]},
                     {"$set": update_data}
                 )
                 executed.append(f"Ustawiono powtarzanie: {pattern}")
@@ -1597,7 +1619,7 @@ PRZYKŁADY:
             elif action == "stop_recurring":
                 task_id = op.get("task_id")
                 await db.notes.update_one(
-                    {"id": {"$regex": f"^{task_id}"}},
+                    {"id": {"$regex": f"^{task_id}"}, "user_id": current_user["id"]},
                     {"$set": {
                         "is_recurring": False,
                         "recurrence_pattern": None,
@@ -1625,15 +1647,15 @@ PRZYKŁADY:
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/notes/summary/daily")
-async def get_daily_notes_summary():
+async def get_daily_notes_summary(current_user: dict = Depends(get_current_user)):
     """Get AI summary of today's notes"""
-    summary = await generate_daily_summary()
+    summary = await generate_daily_summary(user_id=current_user["id"])
     return {"summary": summary, "generated_at": datetime.utcnow().isoformat()}
 
 @api_router.get("/notes/summary/weekly")
-async def get_weekly_notes_summary():
+async def get_weekly_notes_summary(current_user: dict = Depends(get_current_user)):
     """Get AI summary of this week's notes with mood correlation"""
-    summary = await generate_weekly_summary()
+    summary = await generate_weekly_summary(user_id=current_user["id"])
     return {"summary": summary, "generated_at": datetime.utcnow().isoformat()}
 
 # Chat endpoints
@@ -1644,12 +1666,13 @@ async def chat_with_mood_assistant(request: ChatRequest, current_user: dict = De
     
     session_id = request.session_id or str(uuid.uuid4())
     
-    mood_context = await get_mood_context(days=14)
-    notes_context = await get_notes_context(days=30)
+    mood_context = await get_mood_context(days=14, user_id=current_user["id"])
+    notes_context = await get_notes_context(days=30, user_id=current_user["id"])
     
     # Get pending reminders
     today = datetime.utcnow().date().isoformat()
     pending = await db.notes.find({
+        "user_id": current_user["id"],
         "reminder_date": {"$lte": today},
         "$or": [{"reminder_sent": False}, {"reminder_sent": {"$exists": False}}]
     }).to_list(10)
@@ -1698,6 +1721,7 @@ WAŻNE ZASADY:
         # Store messages
         await db.chat_messages.insert_one({
             "id": str(uuid.uuid4()),
+            "user_id": current_user["id"],
             "session_id": session_id,
             "role": "user",
             "content": request.message,
@@ -1705,6 +1729,7 @@ WAŻNE ZASADY:
         })
         await db.chat_messages.insert_one({
             "id": str(uuid.uuid4()),
+            "user_id": current_user["id"],
             "session_id": session_id,
             "role": "assistant",
             "content": response,
@@ -1718,41 +1743,41 @@ WAŻNE ZASADY:
         raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
 
 @api_router.get("/chat/history/{session_id}")
-async def get_chat_history(session_id: str, limit: int = 50):
-    messages = await db.chat_messages.find({"session_id": session_id}).sort("timestamp", 1).limit(limit).to_list(limit)
+async def get_chat_history(session_id: str, limit: int = 50, current_user: dict = Depends(get_current_user)):
+    messages = await db.chat_messages.find({"session_id": session_id, "user_id": current_user["id"]}).sort("timestamp", 1).limit(limit).to_list(limit)
     return [{"id": m.get("id"), "role": m.get("role"), "content": m.get("content"), "timestamp": m.get("timestamp")} for m in messages]
 
 @api_router.delete("/chat/history/{session_id}")
-async def clear_chat_history(session_id: str):
-    result = await db.chat_messages.delete_many({"session_id": session_id})
+async def clear_chat_history(session_id: str, current_user: dict = Depends(get_current_user)):
+    result = await db.chat_messages.delete_many({"session_id": session_id, "user_id": current_user["id"]})
     return {"deleted": result.deleted_count}
 
 @api_router.get("/weekly-summary")
-async def get_weekly_summary_endpoint():
-    summary = await generate_weekly_summary()
+async def get_weekly_summary_endpoint(current_user: dict = Depends(get_current_user)):
+    summary = await generate_weekly_summary(user_id=current_user["id"])
     return {"summary": summary}
 
 @api_router.get("/daily-summary")
-async def get_daily_summary_endpoint():
-    summary = await generate_daily_summary()
+async def get_daily_summary_endpoint(current_user: dict = Depends(get_current_user)):
+    summary = await generate_daily_summary(user_id=current_user["id"])
     return {"summary": summary}
 
 # New comprehensive summary endpoint
 @api_router.get("/summary/today")
 async def get_today_summary(current_user: dict = Depends(get_current_user)):
     """Get comprehensive daily summary with mood comparison, notes, and pending tasks"""
-    summary = await generate_comprehensive_daily_summary()
+    summary = await generate_comprehensive_daily_summary(user_id=current_user["id"])
     return summary
 
 @api_router.get("/summary/week")
-async def get_week_summary():
+async def get_week_summary(current_user: dict = Depends(get_current_user)):
     """Get comprehensive weekly summary"""
-    mood_context = await get_mood_context(days=7)
-    notes_context = await get_notes_context(days=7)
-    user_context = await db.user_context.find_one({"user_id": "default_user"})
+    mood_context = await get_mood_context(days=7, user_id=current_user["id"])
+    notes_context = await get_notes_context(days=7, user_id=current_user["id"])
+    user_context = await db.user_context.find_one({"user_id": current_user["id"]})
     
     # Get tasks from "zadania" category
-    zadania_notes = await db.notes.find({"category": "zadania"}).sort("created_at", -1).to_list(20)
+    zadania_notes = await db.notes.find({"category": "zadania", "user_id": current_user["id"]}).sort("created_at", -1).to_list(20)
     
     pending_tasks = user_context.get("pending_tasks", []) if user_context else []
     
@@ -1859,16 +1884,16 @@ async def update_settings(
 
 # User Context endpoints
 @api_router.get("/context")
-async def get_user_context():
+async def get_user_context(current_user: dict = Depends(get_current_user)):
     """Get learned user context"""
-    context = await db.user_context.find_one({"user_id": "default_user"})
+    context = await db.user_context.find_one({"user_id": current_user["id"]})
     return context or {"topics": [], "pending_tasks": [], "insights": ""}
 
 @api_router.post("/context/learn")
-async def learn_user_context():
+async def learn_user_context(current_user: dict = Depends(get_current_user)):
     """Trigger learning from user's notes"""
-    await learn_from_notes()
-    context = await db.user_context.find_one({"user_id": "default_user"})
+    await learn_from_notes(user_id=current_user["id"])
+    context = await db.user_context.find_one({"user_id": current_user["id"]})
     return context or {"message": "Context learning started"}
 
 # Include router
@@ -1884,6 +1909,49 @@ app.add_middleware(
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+@app.on_event("startup")
+async def startup_db_setup():
+    """Create indexes and migrate orphaned data on startup"""
+    logging.info("Running database setup...")
+    
+    # === INDEXES ===
+    # users_auth: unique email
+    await db.users_auth.create_index("email", unique=True, background=True)
+    await db.users_auth.create_index("id", unique=True, background=True)
+    
+    # moods: fast lookup by user + date
+    await db.moods.create_index([("user_id", 1), ("date", -1), ("time_of_day", 1)], background=True)
+    
+    # notes: fast lookup by user + category + date
+    await db.notes.create_index([("user_id", 1), ("category", 1), ("created_at", -1)], background=True)
+    await db.notes.create_index([("user_id", 1), ("scheduled_date", 1)], background=True)
+    await db.notes.create_index([("user_id", 1), ("is_recurring", 1)], background=True)
+    await db.notes.create_index("id", unique=True, background=True)
+    
+    # chat_messages: fast lookup by user + session
+    await db.chat_messages.create_index([("user_id", 1), ("session_id", 1), ("timestamp", 1)], background=True)
+    
+    # daily_summaries: one per user per day
+    await db.daily_summaries.create_index([("user_id", 1), ("date", -1)], unique=True, background=True)
+    
+    # user_settings: one per user
+    await db.user_settings.create_index("user_id", unique=True, background=True)
+    
+    # user_context: one per user
+    await db.user_context.create_index("user_id", unique=True, background=True)
+    
+    # === MIGRATE ORPHANED DATA ===
+    # Delete documents without user_id (legacy data from before auth)
+    for coll_name in ["moods", "notes", "chat_messages", "daily_summaries"]:
+        result = await db[coll_name].delete_many({"user_id": {"$exists": False}})
+        if result.deleted_count > 0:
+            logging.info(f"Cleaned {result.deleted_count} orphaned docs from {coll_name}")
+        result2 = await db[coll_name].delete_many({"user_id": None})
+        if result2.deleted_count > 0:
+            logging.info(f"Cleaned {result2.deleted_count} null-user docs from {coll_name}")
+    
+    logging.info("Database setup complete.")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
