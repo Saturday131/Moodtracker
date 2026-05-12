@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, getDay } from 'date-fns';
 import { pl } from 'date-fns/locale';
 import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
@@ -86,6 +86,13 @@ export default function NotesScreen() {
   const [scheduledDate, setScheduledDate] = useState('');
   const [scheduledTime, setScheduledTime] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Pickers
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [pickerMonth, setPickerMonth] = useState(new Date());
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [pickerHour, setPickerHour] = useState(12);
+  const [pickerMinute, setPickerMinute] = useState(0);
 
   // View note modal
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
@@ -215,6 +222,11 @@ export default function NotesScreen() {
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
+  const playPreviewVoice = async () => {
+    if (!voiceBase64) return;
+    await playVoice(voiceBase64, '__preview__');
+  };
+
   const fetchNotes = async () => {
     try {
       if (!refreshing) setLoading(true);
@@ -281,7 +293,7 @@ export default function NotesScreen() {
         recurrence_pattern: isTask && isRecurring ? recurrencePattern : null,
         recurrence_days: isTask && isRecurring && recurrencePattern === 'custom' ? recurrenceDays : [],
         recurrence_end_date: isTask && isRecurring && recurrenceEndDate ? recurrenceEndDate : null,
-        scheduled_date: isTask && scheduledDate ? scheduledDate : null,
+        scheduled_date: isTask && scheduledDate ? scheduledDate.split('-').reverse().join('-') : null,
         scheduled_time: isTask && scheduledTime ? scheduledTime : null,
       };
 
@@ -691,8 +703,16 @@ export default function NotesScreen() {
               {/* Voice preview */}
               {voiceBase64 && (
                 <View style={styles.mediaPreview}>
-                  <Ionicons name="musical-notes" size={18} color="#22C55E" />
-                  <Text style={styles.mediaPreviewText}>Nagranie dołączone</Text>
+                  <TouchableOpacity onPress={playPreviewVoice}>
+                    <Ionicons
+                      name={playingNoteId === '__preview__' ? 'pause-circle' : 'play-circle'}
+                      size={28}
+                      color="#22C55E"
+                    />
+                  </TouchableOpacity>
+                  <Text style={styles.mediaPreviewText}>
+                    {playingNoteId === '__preview__' ? 'Odtwarzanie...' : 'Nagranie dołączone'}
+                  </Text>
                   <TouchableOpacity onPress={() => setVoiceBase64(null)}>
                     <Ionicons name="close-circle" size={20} color="#EF4444" />
                   </TouchableOpacity>
@@ -723,15 +743,15 @@ export default function NotesScreen() {
                     <Ionicons name="calendar-outline" size={18} color="#3B82F6" />
                     <Text style={styles.sectionLabel}>Data zadania</Text>
                   </View>
-                  <TextInput
-                    data-testid="scheduled-date-input"
-                    style={styles.titleInput}
-                    placeholder="RRRR-MM-DD (np. 2026-02-20)"
-                    placeholderTextColor="#6B7280"
-                    value={scheduledDate}
-                    onChangeText={setScheduledDate}
-                    keyboardType="numbers-and-punctuation"
-                  />
+                  <TouchableOpacity
+                    style={styles.pickerButton}
+                    onPress={() => { setPickerMonth(scheduledDate ? new Date(scheduledDate.split('-').reverse().join('-')) : new Date()); setShowDatePicker(true); }}
+                  >
+                    <Text style={scheduledDate ? styles.pickerValueText : styles.pickerPlaceholderText}>
+                      {scheduledDate || 'Wybierz datę'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={18} color="#6B7280" />
+                  </TouchableOpacity>
                 </View>
 
                 {/* Scheduled Time */}
@@ -740,15 +760,21 @@ export default function NotesScreen() {
                     <Ionicons name="time-outline" size={18} color="#3B82F6" />
                     <Text style={styles.sectionLabel}>Godzina</Text>
                   </View>
-                  <TextInput
-                    data-testid="scheduled-time-input"
-                    style={styles.titleInput}
-                    placeholder="GG:MM (np. 14:30)"
-                    placeholderTextColor="#6B7280"
-                    value={scheduledTime}
-                    onChangeText={setScheduledTime}
-                    keyboardType="numbers-and-punctuation"
-                  />
+                  <TouchableOpacity
+                    style={styles.pickerButton}
+                    onPress={() => {
+                      if (scheduledTime) {
+                        const [h, m] = scheduledTime.split(':').map(Number);
+                        setPickerHour(h); setPickerMinute(m);
+                      }
+                      setShowTimePicker(true);
+                    }}
+                  >
+                    <Text style={scheduledTime ? styles.pickerValueText : styles.pickerPlaceholderText}>
+                      {scheduledTime || 'Wybierz godzinę'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={18} color="#6B7280" />
+                  </TouchableOpacity>
                 </View>
 
                 {/* Recurring Toggle */}
@@ -861,6 +887,103 @@ export default function NotesScreen() {
             )}
           </ScrollView>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Date Picker Modal */}
+      <Modal visible={showDatePicker} transparent animationType="fade" onRequestClose={() => setShowDatePicker(false)}>
+        <TouchableOpacity style={styles.pickerOverlay} activeOpacity={1} onPress={() => setShowDatePicker(false)}>
+          <View style={styles.pickerPopup} onStartShouldSetResponder={() => true}>
+            <View style={styles.pickerPopupHeader}>
+              <TouchableOpacity onPress={() => setPickerMonth(subMonths(pickerMonth, 1))}>
+                <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+              <Text style={styles.pickerMonthText}>
+                {format(pickerMonth, 'LLLL yyyy', { locale: pl })}
+              </Text>
+              <TouchableOpacity onPress={() => setPickerMonth(addMonths(pickerMonth, 1))}>
+                <Ionicons name="chevron-forward" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.pickerDayLabels}>
+              {['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'].map(d => (
+                <Text key={d} style={styles.pickerDayLabel}>{d}</Text>
+              ))}
+            </View>
+            <View style={styles.pickerGrid}>
+              {(() => {
+                const start = startOfMonth(pickerMonth);
+                const end = endOfMonth(pickerMonth);
+                const days = eachDayOfInterval({ start, end });
+                const firstDow = (getDay(start) + 6) % 7;
+                const cells = [];
+                for (let i = 0; i < firstDow; i++) cells.push(<View key={`e${i}`} style={styles.pickerDayCell} />);
+                days.forEach(day => {
+                  const dateStr = format(day, 'dd-MM-yyyy');
+                  const isSelected = scheduledDate === dateStr;
+                  cells.push(
+                    <TouchableOpacity key={dateStr} style={[styles.pickerDayCell, isSelected && styles.pickerDayCellActive]}
+                      onPress={() => { setScheduledDate(dateStr); setShowDatePicker(false); }}>
+                      <Text style={[styles.pickerDayText, isSelected && styles.pickerDayTextActive]}>{format(day, 'd')}</Text>
+                    </TouchableOpacity>
+                  );
+                });
+                return cells;
+              })()}
+            </View>
+            {scheduledDate ? (
+              <TouchableOpacity style={styles.pickerClearBtn} onPress={() => { setScheduledDate(''); setShowDatePicker(false); }}>
+                <Text style={styles.pickerClearText}>Usuń datę</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Time Picker Modal */}
+      <Modal visible={showTimePicker} transparent animationType="fade" onRequestClose={() => setShowTimePicker(false)}>
+        <TouchableOpacity style={styles.pickerOverlay} activeOpacity={1} onPress={() => setShowTimePicker(false)}>
+          <View style={styles.pickerPopup} onStartShouldSetResponder={() => true}>
+            <Text style={styles.pickerPopupTitle}>Wybierz godzinę</Text>
+            <View style={styles.timePickerRow}>
+              <View style={styles.timeColumn}>
+                <ScrollView style={styles.timeScroll} showsVerticalScrollIndicator={false}>
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <TouchableOpacity key={i} style={[styles.timeCell, pickerHour === i && styles.timeCellActive]}
+                      onPress={() => setPickerHour(i)}>
+                      <Text style={[styles.timeCellText, pickerHour === i && styles.timeCellTextActive]}>
+                        {i.toString().padStart(2, '0')}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                <Text style={styles.timeColumnLabel}>godz.</Text>
+              </View>
+              <Text style={styles.timeSeparator}>:</Text>
+              <View style={styles.timeColumn}>
+                <ScrollView style={styles.timeScroll} showsVerticalScrollIndicator={false}>
+                  {Array.from({ length: 12 }, (_, i) => i * 5).map(m => (
+                    <TouchableOpacity key={m} style={[styles.timeCell, pickerMinute === m && styles.timeCellActive]}
+                      onPress={() => setPickerMinute(m)}>
+                      <Text style={[styles.timeCellText, pickerMinute === m && styles.timeCellTextActive]}>
+                        {m.toString().padStart(2, '0')}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                <Text style={styles.timeColumnLabel}>min.</Text>
+              </View>
+            </View>
+            <TouchableOpacity style={styles.timeConfirmBtn}
+              onPress={() => { setScheduledTime(`${pickerHour.toString().padStart(2,'0')}:${pickerMinute.toString().padStart(2,'0')}`); setShowTimePicker(false); }}>
+              <Text style={styles.timeConfirmText}>Potwierdź {pickerHour.toString().padStart(2,'0')}:{pickerMinute.toString().padStart(2,'0')}</Text>
+            </TouchableOpacity>
+            {scheduledTime ? (
+              <TouchableOpacity style={styles.pickerClearBtn} onPress={() => { setScheduledTime(''); setShowTimePicker(false); }}>
+                <Text style={styles.pickerClearText}>Usuń godzinę</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </TouchableOpacity>
       </Modal>
 
       {/* View Note Modal */}
@@ -1522,5 +1645,152 @@ const styles = StyleSheet.create({
     height: 300,
     borderRadius: 12,
     marginTop: 16,
+  },
+  pickerButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#1F2937',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#374151',
+  },
+  pickerValueText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+  },
+  pickerPlaceholderText: {
+    color: '#6B7280',
+    fontSize: 16,
+  },
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  pickerPopup: {
+    backgroundColor: '#1F2937',
+    borderRadius: 16,
+    padding: 16,
+    width: '100%',
+    maxWidth: 350,
+  },
+  pickerPopupHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  pickerMonthText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  pickerDayLabels: {
+    flexDirection: 'row',
+    marginBottom: 4,
+  },
+  pickerDayLabel: {
+    flex: 1,
+    textAlign: 'center',
+    color: '#6B7280',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  pickerGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  pickerDayCell: {
+    width: '14.28%',
+    aspectRatio: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pickerDayCellActive: {
+    backgroundColor: '#6366F1',
+    borderRadius: 20,
+  },
+  pickerDayText: {
+    color: '#D1D5DB',
+    fontSize: 14,
+  },
+  pickerDayTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  pickerClearBtn: {
+    alignItems: 'center',
+    paddingVertical: 10,
+    marginTop: 8,
+  },
+  pickerClearText: {
+    color: '#EF4444',
+    fontSize: 14,
+  },
+  pickerPopupTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  timePickerRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  timeColumn: {
+    alignItems: 'center',
+    width: 70,
+  },
+  timeScroll: {
+    height: 180,
+  },
+  timeCell: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  timeCellActive: {
+    backgroundColor: '#6366F1',
+  },
+  timeCellText: {
+    color: '#9CA3AF',
+    fontSize: 18,
+    fontWeight: '500',
+  },
+  timeCellTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  timeColumnLabel: {
+    color: '#6B7280',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  timeSeparator: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '700',
+    marginBottom: 20,
+  },
+  timeConfirmBtn: {
+    backgroundColor: '#6366F1',
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  timeConfirmText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

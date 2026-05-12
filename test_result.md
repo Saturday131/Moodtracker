@@ -248,6 +248,9 @@ backend:
       - working: true
         agent: "testing"
         comment: "✅ TESTED: Semantic search with ChromaDB working correctly. User 1 can find their coffee note when searching for 'kawa'. User isolation properly enforced - User 2 search results only include their own notes, never User 1's notes."
+      - working: true
+        agent: "testing"
+        comment: "✅ RE-VERIFIED (2026-05-12): GET /api/notes/search?q=siłownia semantic search working perfectly. Found 2 results including the 'Trening' task with 'Siłownia' content. ChromaDB semantic search correctly matching Polish text and returning relevant results with proper user isolation."
 
   - task: "Mood Entry with Authentication"
     implemented: true
@@ -348,6 +351,8 @@ agent_communication:
     message: "✅ EXPO MOOD TRACKER APP UI TESTING COMPLETED: Comprehensive testing of Polish mood tracker app at https://ai-mood-buddy-2.preview.emergentagent.com in mobile dimensions (390x844). All specified flows verified: 1) Notes screen (/notes) displays task list with time badges (07:00, 08:30) and recurrence info 'Wybrane dni (Pn, Śr, Pt)' - CONFIRMED. FAB button visible and functional. 2) Calendar screen (/calendar) renders with month navigation, day selection works. Day 16 shows tasks with time badges and recurrence labels. Day 17 shows different task count (recurrence logic working). 3) Bottom tab navigation (Dziś, Kalendarz, Notatki, Czat) fully functional. Dark theme (#111827) working correctly. All UI elements properly displayed in Polish. App loads and functions perfectly in mobile viewport. No critical issues found."
   - agent: "testing"
     message: "✅ COMPREHENSIVE AUTH SYSTEM & SEMANTIC SEARCH TESTING COMPLETED: All 18 authentication and search tests passed (100% success rate). VERIFIED: 1) User registration (POST /api/auth/register) creates users with JWT tokens and proper user data. 2) User login (POST /api/auth/login) authenticates correctly. 3) Duplicate registration properly returns 400 error. 4) Auth me endpoint (GET /api/auth/me) returns user data with valid tokens, 401 for invalid tokens. 5) All protected endpoints (notes, moods) correctly require authentication - return 401 without tokens. 6) COMPLETE DATA ISOLATION between users verified - User 1 only sees their notes/moods, User 2 only sees their data, no cross-user leakage. 7) SEMANTIC SEARCH with ChromaDB working perfectly - User 1 finds coffee notes when searching 'kawa', User 2 search results properly isolated to only their own notes. 8) Mood entry creation/retrieval with auth working correctly. 9) Invalid token handling returns proper 401 errors. JWT authentication middleware, user isolation, and semantic search all functioning perfectly."
+  - agent: "testing"
+    message: "✅ TASK SCHEDULING FEATURE RE-VERIFICATION COMPLETED: All 10 tests passed (100% success rate). Comprehensive testing of task scheduling endpoints confirmed all features working correctly: 1) User authentication (register/login) working perfectly with JWT tokens. 2) POST /api/notes creates scheduled tasks with date (2026-05-20) and time (09:30) correctly. 3) Recurring daily tasks created successfully with is_recurring=true, recurrence_pattern='daily', scheduled_time='08:00'. 4) Custom recurring tasks with recurrence_days=[0,2,4] (Mon/Wed/Fri), scheduled_time='17:00', recurrence_end_date='2026-06-30' working perfectly. 5) GET /api/tasks/for-date/2026-05-20 correctly returns scheduled tasks including 'Wizyta u lekarza'. 6) GET /api/notes/library?period=all&category=zadania returns all task notes with proper structure (total, notes array, all_tags). 7) PUT /api/tasks/{id}/complete sets is_completed=true and completed_at timestamp. 8) PUT /api/tasks/{id}/uncomplete sets is_completed=false and completed_at=null. 9) DELETE /api/notes/{id} successfully deletes tasks. 10) GET /api/notes/search?q=siłownia semantic search finds training notes correctly. All advanced scheduling fields (is_recurring, recurrence_pattern, recurrence_days, scheduled_time, recurrence_end_date, scheduled_date) are properly saved, retrieved, and functional. No critical issues found."
 
   - task: "Notes API - POST /api/notes with voice transcription"
     implemented: true
@@ -447,6 +452,9 @@ agent_communication:
       - working: true
         agent: "testing"
         comment: "✅ TESTED: POST /api/notes with advanced scheduling fields works perfectly. Creates tasks with is_recurring=true, recurrence_pattern (daily/weekdays/custom), recurrence_days [0,2,4], scheduled_time '06:00', recurrence_end_date, scheduled_date. All fields correctly saved and returned in response."
+      - working: true
+        agent: "testing"
+        comment: "✅ RE-VERIFIED (2026-05-12): Comprehensive testing of task scheduling feature completed. Created 3 test tasks: (1) Scheduled task with date 2026-05-20 and time 09:30 - all fields saved correctly. (2) Recurring daily task with scheduled_time 08:00 - is_recurring=true, recurrence_pattern='daily' working. (3) Custom recurring task with recurrence_days=[0,2,4], scheduled_time=17:00, recurrence_end_date=2026-06-30 - all custom fields working perfectly. All advanced scheduling fields properly saved and retrieved."
 
   - task: "Tasks for Date API - GET /api/tasks/for-date/{date}"
     implemented: true
@@ -459,6 +467,9 @@ agent_communication:
       - working: true
         agent: "testing"
         comment: "✅ TESTED: GET /api/tasks/for-date/{date} correctly implements recurrence logic. Monday (7 tasks): daily+weekdays+custom. Tuesday (3 tasks): daily+weekdays only. Wednesday (6 tasks): daily+weekdays+custom. Saturday (2 tasks): daily only. Recurrence patterns working correctly."
+      - working: true
+        agent: "testing"
+        comment: "✅ RE-VERIFIED (2026-05-12): GET /api/tasks/for-date/2026-05-20 correctly returns scheduled tasks. Found 'Wizyta u lekarza' task scheduled for that date along with 2 other recurring tasks (daily and custom recurring). Total 3 tasks returned. Recurrence logic working correctly - daily tasks and custom recurring tasks (Mon/Wed/Fri) properly included for Tuesday date."
 
   - task: "Chat Task Modification API - POST /api/tasks/chat-modify"
     implemented: true
@@ -483,6 +494,9 @@ agent_communication:
       - working: true
         agent: "testing"
         comment: "✅ TESTED: PUT /api/tasks/{task_id}/complete sets is_completed=true, completed_at timestamp. PUT /api/tasks/{task_id}/uncomplete sets is_completed=false, completed_at=null. Both endpoints return updated Note object with correct completion status."
+      - working: true
+        agent: "testing"
+        comment: "✅ RE-VERIFIED (2026-05-12): Task completion toggle working perfectly. PUT /api/tasks/{id}/complete correctly sets is_completed=true and completed_at timestamp. PUT /api/tasks/{id}/uncomplete correctly sets is_completed=false and completed_at=null. Both endpoints return updated task object with correct status."
 
   - task: "Tasks Library Filtering - GET /api/notes/library?category=zadania"
     implemented: true
@@ -495,3 +509,6 @@ agent_communication:
       - working: true
         agent: "testing"
         comment: "✅ TESTED: GET /api/notes/library?category=zadania returns only task notes (category=zadania), includes scheduling fields (recurrence_days, scheduled_time, recurrence_end_date). Proper structure with total count, notes array, all_tags list. Tasks with advanced scheduling correctly displayed."
+      - working: true
+        agent: "testing"
+        comment: "✅ RE-VERIFIED (2026-05-12): GET /api/notes/library?period=all&category=zadania working perfectly. Returns proper structure with total count (3), notes array (3 tasks), and all_tags (28 tags). All created tasks appear in library with correct scheduling fields. Category filtering working correctly."
