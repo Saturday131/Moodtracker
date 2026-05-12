@@ -13,7 +13,9 @@ Mobilna aplikacja do śledzenia nastroju (Expo + FastAPI + MongoDB) z polskim UI
 ## Architecture
 - **Frontend**: Expo SDK 51, React Native, Expo Router
 - **Backend**: FastAPI, MongoDB (motor), Pydantic
-- **AI**: OpenAI GPT-4o via Emergent LLM Key
+- **Auth**: JWT (PyJWT + bcrypt/passlib), AuthProvider context
+- **Vector DB**: ChromaDB (all-MiniLM-L6-v2, lokalne embeddingi)
+- **AI**: OpenAI GPT via Emergent LLM Key
 - **Background Jobs**: apscheduler
 
 ## What's Implemented
@@ -59,7 +61,11 @@ Mobilna aplikacja do śledzenia nastroju (Expo + FastAPI + MongoDB) z polskim UI
 - [ ] Refaktoryzacja server.py (routes/models)
 
 ## Key Files
-- `backend/server.py` — cała logika backendowa
+- `backend/server.py` — cała logika backendowa (auth, CRUD, AI, ChromaDB)
+- `frontend/app/auth-context.tsx` — AuthProvider, useAuth hook
+- `frontend/app/auth-screen.tsx` — ekran logowania/rejestracji
+- `frontend/app/profile-modal.tsx` — modal profilu użytkownika
+- `frontend/app/_layout.tsx` — nawigacja + auth guard
 - `frontend/app/notes.tsx` — ekran notatek z formularzem tworzenia
 - `frontend/app/calendar.tsx` — kalendarz z listą zadań
 - `frontend/app/chat.tsx` — AI chatbot
