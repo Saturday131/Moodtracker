@@ -26,8 +26,13 @@ const DAYS_OF_WEEK = [
   { key: 6, label: 'Niedziela' },
 ];
 
-const TIME_OPTIONS = [
-  '18:00', '19:00', '20:00', '21:00', '22:00', '23:00',
+const DAILY_TIME_OPTIONS = [
+  '07:00', '08:00', '09:00', '10:00',
+  '18:00', '19:00', '20:00', '21:00', '22:00',
+];
+
+const WEEKLY_TIME_OPTIONS = [
+  '08:00', '09:00', '10:00', '11:00', '12:00',
 ];
 
 interface Settings {
@@ -36,6 +41,7 @@ interface Settings {
   weekly_notification_enabled: boolean;
   weekly_notification_day: number;
   weekly_notification_time: string;
+  task_reminders_enabled: boolean;
 }
 
 export default function SettingsScreen() {
@@ -43,12 +49,14 @@ export default function SettingsScreen() {
   const { authHeaders, logout } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testingSend, setTestingSend] = useState(false);
   const [settings, setSettings] = useState<Settings>({
     daily_notification_enabled: true,
     daily_notification_time: '21:00',
     weekly_notification_enabled: true,
     weekly_notification_day: 6,
     weekly_notification_time: '10:00',
+    task_reminders_enabled: true,
   });
 
   useEffect(() => {
@@ -57,7 +65,9 @@ export default function SettingsScreen() {
 
   const fetchSettings = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/settings`);
+      const response = await fetch(`${API_URL}/api/settings`, {
+        headers: authHeaders(),
+      });
       if (response.ok) {
         const data = await response.json();
         setSettings({
@@ -66,6 +76,7 @@ export default function SettingsScreen() {
           weekly_notification_enabled: data.weekly_notification_enabled ?? true,
           weekly_notification_day: data.weekly_notification_day ?? 6,
           weekly_notification_time: data.weekly_notification_time ?? '10:00',
+          task_reminders_enabled: data.task_reminders_enabled ?? true,
         });
       }
     } catch (error) {
@@ -83,6 +94,7 @@ export default function SettingsScreen() {
       
       const response = await fetch(`${API_URL}/api/settings?${params.toString()}`, {
         method: 'PUT',
+        headers: authHeaders(),
       });
       
       if (response.ok) {
@@ -93,12 +105,32 @@ export default function SettingsScreen() {
           weekly_notification_enabled: data.weekly_notification_enabled ?? true,
           weekly_notification_day: data.weekly_notification_day ?? 6,
           weekly_notification_time: data.weekly_notification_time ?? '10:00',
+          task_reminders_enabled: data.task_reminders_enabled ?? true,
         });
       }
     } catch (error) {
       Alert.alert('Błąd', 'Nie udało się zapisać ustawień');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const sendTestNotification = async () => {
+    setTestingSend(true);
+    try {
+      const response = await fetch(`${API_URL}/api/push-token/test`, {
+        headers: authHeaders(),
+      });
+      if (response.ok) {
+        Alert.alert('Sukces', 'Testowe powiadomienie zostało wysłane!');
+      } else {
+        const data = await response.json();
+        Alert.alert('Info', data.detail || 'Zarejestruj token push na fizycznym urządzeniu.');
+      }
+    } catch (error) {
+      Alert.alert('Błąd', 'Nie udało się wysłać testowego powiadomienia');
+    } finally {
+      setTestingSend(false);
     }
   };
 
@@ -113,7 +145,7 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton} data-testid="settings-back-btn">
           <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Ustawienia</Text>
@@ -121,11 +153,41 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Task Reminders Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="alarm-outline" size={20} color="#F59E0B" />
+            <Text style={styles.sectionTitle}>Przypomnienia o zadaniach</Text>
+          </View>
+          <Text style={styles.sectionDescription}>
+            Otrzymuj powiadomienie w momencie zaplanowanym dla zadania
+          </Text>
+
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Przypomnienia włączone</Text>
+            </View>
+            <Switch
+              data-testid="task-reminders-switch"
+              value={settings.task_reminders_enabled}
+              onValueChange={(value) => {
+                setSettings(prev => ({ ...prev, task_reminders_enabled: value }));
+                saveSettings('task_reminders_enabled', value);
+              }}
+              trackColor={{ false: '#374151', true: '#F59E0B' }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+        </View>
+
         {/* Daily Summary Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📊 Podsumowanie Dzienne</Text>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="sunny-outline" size={20} color="#6366F1" />
+            <Text style={styles.sectionTitle}>Podsumowanie dzienne</Text>
+          </View>
           <Text style={styles.sectionDescription}>
-            Otrzymuj powiadomienie z podsumowaniem dnia
+            Przypomnienie o zapisaniu nastroju i podsumowanie dnia
           </Text>
 
           <View style={styles.settingRow}>
@@ -133,6 +195,7 @@ export default function SettingsScreen() {
               <Text style={styles.settingLabel}>Powiadomienia włączone</Text>
             </View>
             <Switch
+              data-testid="daily-notification-switch"
               value={settings.daily_notification_enabled}
               onValueChange={(value) => {
                 setSettings(prev => ({ ...prev, daily_notification_enabled: value }));
@@ -147,7 +210,7 @@ export default function SettingsScreen() {
             <View style={styles.timeSelector}>
               <Text style={styles.timeSelectorLabel}>Godzina powiadomienia</Text>
               <View style={styles.timeOptions}>
-                {TIME_OPTIONS.map((time) => (
+                {DAILY_TIME_OPTIONS.map((time) => (
                   <TouchableOpacity
                     key={time}
                     style={[
@@ -174,9 +237,12 @@ export default function SettingsScreen() {
 
         {/* Weekly Summary Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📈 Podsumowanie Tygodniowe</Text>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="bar-chart-outline" size={20} color="#22C55E" />
+            <Text style={styles.sectionTitle}>Podsumowanie tygodniowe</Text>
+          </View>
           <Text style={styles.sectionDescription}>
-            Otrzymuj rozszerzone podsumowanie tygodnia
+            Rozszerzone podsumowanie tygodnia z analizą trendów
           </Text>
 
           <View style={styles.settingRow}>
@@ -184,12 +250,13 @@ export default function SettingsScreen() {
               <Text style={styles.settingLabel}>Powiadomienia włączone</Text>
             </View>
             <Switch
+              data-testid="weekly-notification-switch"
               value={settings.weekly_notification_enabled}
               onValueChange={(value) => {
                 setSettings(prev => ({ ...prev, weekly_notification_enabled: value }));
                 saveSettings('weekly_notification_enabled', value);
               }}
-              trackColor={{ false: '#374151', true: '#6366F1' }}
+              trackColor={{ false: '#374151', true: '#22C55E' }}
               thumbColor="#FFFFFF"
             />
           </View>
@@ -227,12 +294,12 @@ export default function SettingsScreen() {
               <View style={styles.timeSelector}>
                 <Text style={styles.timeSelectorLabel}>Godzina powiadomienia</Text>
                 <View style={styles.timeOptions}>
-                  {['08:00', '09:00', '10:00', '11:00', '12:00'].map((time) => (
+                  {WEEKLY_TIME_OPTIONS.map((time) => (
                     <TouchableOpacity
                       key={time}
                       style={[
                         styles.timeOption,
-                        settings.weekly_notification_time === time && styles.timeOptionActive,
+                        settings.weekly_notification_time === time && styles.weeklyTimeOptionActive,
                       ]}
                       onPress={() => {
                         setSettings(prev => ({ ...prev, weekly_notification_time: time }));
@@ -253,11 +320,28 @@ export default function SettingsScreen() {
           )}
         </View>
 
+        {/* Test Notification */}
+        <TouchableOpacity
+          style={styles.testButton}
+          onPress={sendTestNotification}
+          disabled={testingSend}
+          data-testid="test-notification-btn"
+        >
+          {testingSend ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <>
+              <Ionicons name="notifications-outline" size={20} color="#FFFFFF" />
+              <Text style={styles.testButtonText}>Wyślij testowe powiadomienie</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
         {/* Info Section */}
         <View style={styles.infoSection}>
           <Ionicons name="information-circle-outline" size={20} color="#6B7280" />
           <Text style={styles.infoText}>
-            Powiadomienia push działają w pełnych buildach aplikacji. W trybie deweloperskim (Expo Go) podsumowania są dostępne w aplikacji i przez czat.
+            Powiadomienia push działają na fizycznych urządzeniach (iOS/Android). W trybie webowym powiadomienia są dostępne w aplikacji i przez czat AI.
           </Text>
         </View>
 
@@ -272,6 +356,7 @@ export default function SettingsScreen() {
         <TouchableOpacity
           style={styles.logoutButton}
           onPress={logout}
+          data-testid="logout-btn"
         >
           <Ionicons name="log-out-outline" size={20} color="#EF4444" />
           <Text style={styles.logoutText}>Wyloguj się</Text>
@@ -322,16 +407,22 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
   sectionTitle: {
     fontSize: 17,
     fontWeight: '600',
     color: '#FFFFFF',
-    marginBottom: 4,
   },
   sectionDescription: {
     fontSize: 13,
     color: '#9CA3AF',
     marginBottom: 16,
+    marginLeft: 28,
   },
   settingRow: {
     flexDirection: 'row',
@@ -368,6 +459,9 @@ const styles = StyleSheet.create({
   timeOptionActive: {
     backgroundColor: '#6366F1',
   },
+  weeklyTimeOptionActive: {
+    backgroundColor: '#22C55E',
+  },
   timeOptionText: {
     fontSize: 14,
     color: '#9CA3AF',
@@ -390,7 +484,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#374151',
   },
   dayOptionActive: {
-    backgroundColor: '#6366F1',
+    backgroundColor: '#22C55E',
   },
   dayOptionText: {
     fontSize: 13,
@@ -398,6 +492,21 @@ const styles = StyleSheet.create({
   },
   dayOptionTextActive: {
     color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  testButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4F46E5',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    gap: 10,
+  },
+  testButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
     fontWeight: '600',
   },
   infoSection: {
@@ -434,6 +543,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     marginTop: 8,
+    marginBottom: 32,
     gap: 10,
     borderWidth: 1,
     borderColor: '#EF444430',

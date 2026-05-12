@@ -331,12 +331,12 @@ frontend:
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 1
+  test_sequence: 2
   run_ui: false
 
 test_plan:
   current_focus:
-    - "Advanced Task Scheduling system tested and working"
+    - "Push Notification System tested and working"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -358,6 +358,9 @@ agent_communication:
     message: "✅ TASK SCHEDULING FEATURE RE-VERIFICATION COMPLETED: All 10 tests passed (100% success rate). Comprehensive testing of task scheduling endpoints confirmed all features working correctly: 1) User authentication (register/login) working perfectly with JWT tokens. 2) POST /api/notes creates scheduled tasks with date (2026-05-20) and time (09:30) correctly. 3) Recurring daily tasks created successfully with is_recurring=true, recurrence_pattern='daily', scheduled_time='08:00'. 4) Custom recurring tasks with recurrence_days=[0,2,4] (Mon/Wed/Fri), scheduled_time='17:00', recurrence_end_date='2026-06-30' working perfectly. 5) GET /api/tasks/for-date/2026-05-20 correctly returns scheduled tasks including 'Wizyta u lekarza'. 6) GET /api/notes/library?period=all&category=zadania returns all task notes with proper structure (total, notes array, all_tags). 7) PUT /api/tasks/{id}/complete sets is_completed=true and completed_at timestamp. 8) PUT /api/tasks/{id}/uncomplete sets is_completed=false and completed_at=null. 9) DELETE /api/notes/{id} successfully deletes tasks. 10) GET /api/notes/search?q=siłownia semantic search finds training notes correctly. All advanced scheduling fields (is_recurring, recurrence_pattern, recurrence_days, scheduled_time, recurrence_end_date, scheduled_date) are properly saved, retrieved, and functional. No critical issues found."
   - agent: "testing"
     message: "✅ MULTI-USER DATA ISOLATION COMPREHENSIVE TESTING COMPLETED (2026-05-12): Executed 22 comprehensive security tests - ALL PASSED (100% success rate). Test coverage: STEP 1 - User registration/login for User A (usera@test.pl) and User B (userb@test.pl) working correctly with JWT tokens. STEP 2 - Created test data for User A: mood (overall=4), task 'Zadanie usera A', thought 'Myśl usera A'. STEP 3 - Created test data for User B: mood (overall=2), task 'Zadanie usera B'. STEP 4 (CRITICAL ISOLATION TESTS - 11/11 passed): (4a) GET /api/notes/library - User A sees only their 2 notes, NOT User B's task ✅. (4b) User B sees only their 1 note, NOT User A's data ✅. (4c) GET /api/moods - User A sees only their mood (overall=4), NOT User B's (overall=2) ✅. (4d) User B sees only their mood ✅. (4e,4f) GET /api/tasks/for-date/2026-05-12 - each user sees only their own tasks ✅. (4g) GET /api/analytics/summary - returns User A's data only (average_layers, total_entries=1) ✅. (4h) GET /api/analytics/compare - returns User A's comparison data only (current/previous periods) ✅. STEP 5 (CROSS-USER ATTACK TESTS): (5a) User B cannot complete User A's task - properly returns 404 ✅. (5b) User B cannot delete User A's note - properly returns 404 ✅. (5c) GET /api/moods/export/json - User B export contains only their mood, NOT User A's ✅. STEP 6 (AUTH ENFORCEMENT): All endpoints (notes/library, analytics/summary, weekly-summary, chat/history) properly return 401 without authentication ✅. VERDICT: Multi-user data isolation is FULLY FUNCTIONAL across all endpoints including notes, moods, tasks, analytics, and exports. No security breaches detected."
+  - agent: "testing"
+    message: "✅ PUSH NOTIFICATION SYSTEM TESTING COMPLETED (2026-05-12): Executed 17 comprehensive tests - ALL PASSED (100% success rate). Test coverage: STEP 1 - User authentication (push_test@test.pl) working correctly. STEP 2 - Push token management: (2a) POST /api/push-token registered 'ExponentPushToken[abc123]' with device_name 'Test iPhone' ✅. (2b) Re-registering same token with updated device_name is idempotent (upsert behavior) ✅. (2c) Registered second token 'ExponentPushToken[def456]' ✅. STEP 3 - Test push notification: (3a) GET /api/push-token/test sent to 2 devices successfully ✅. (3b) Backend logs confirm 'Push sent to 2 devices: 200' ✅. STEP 4 - Settings management: (4a) GET /api/settings returns defaults (daily_notification_enabled=true, task_reminders_enabled=true, weekly_notification_enabled=true, daily_notification_time='21:00', weekly_notification_day=6, weekly_notification_time='10:00') ✅. (4b) PUT /api/settings?task_reminders_enabled=false updated correctly ✅. (4c) PUT /api/settings?daily_notification_time=19:00 updated correctly ✅. (4d) PUT /api/settings?weekly_notification_day=3&weekly_notification_time=11:00 updated correctly ✅. (4e) PUT /api/settings?daily_notification_enabled=false updated correctly ✅. STEP 5 - Cleanup: (5a,5b) DELETE /api/push-token removed both tokens ✅. (5c) GET /api/push-token/test correctly returned 404 after token removal ✅. STEP 6 - Cross-user isolation: (6a) User 2 (push_test2@test.pl) registered successfully ✅. (6b) User 2 registered token 'ExponentPushToken[user2token]' ✅. (6c) User 1 test push correctly returned 404 (no tokens after cleanup) ✅. (6d) User 2 test push succeeded with 1 device ✅. VERDICT: Push notification system fully functional with proper Expo Push API integration, idempotent token registration, settings management, and complete cross-user isolation. No critical issues found."
+
 
   - task: "Notes API - POST /api/notes with voice transcription"
     implemented: true
@@ -517,3 +520,87 @@ agent_communication:
       - working: true
         agent: "testing"
         comment: "✅ RE-VERIFIED (2026-05-12): GET /api/notes/library?period=all&category=zadania working perfectly. Returns proper structure with total count (3), notes array (3 tasks), and all_tags (28 tags). All created tasks appear in library with correct scheduling fields. Category filtering working correctly."
+
+  - task: "Push Token Registration API - POST /api/push-token"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (2026-05-12): POST /api/push-token successfully registers Expo push tokens. Tested with 'ExponentPushToken[abc123]' and device_name 'Test iPhone'. Returns {'message': 'Token registered'}. Endpoint uses upsert (update_one with upsert=True), so registering same token twice is idempotent - updates device_name without creating duplicates. All tests passed."
+
+  - task: "Push Token Deletion API - DELETE /api/push-token"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (2026-05-12): DELETE /api/push-token?token={token} successfully removes push tokens. Tested deletion of 'ExponentPushToken[abc123]' and 'ExponentPushToken[def456]'. Returns {'message': 'Token removed'}. Properly scoped to current user (user_id filter in delete query). All tests passed."
+
+  - task: "Test Push Notification API - GET /api/push-token/test"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (2026-05-12): GET /api/push-token/test sends test push notifications to all user's registered devices. Tested with 2 devices - returns {'message': 'Wysłano testowe powiadomienie na 2 urządzeń'}. Backend logs confirm 'Push sent to 2 devices: 200'. When no tokens registered, correctly returns 404 with 'Brak zarejestrowanych tokenów push'. Expo Push API integration working correctly. All tests passed."
+
+  - task: "User Settings API - GET /api/settings"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (2026-05-12): GET /api/settings returns user notification settings. Verified default values: daily_notification_enabled=true, daily_notification_time='21:00', weekly_notification_enabled=true, weekly_notification_day=6 (Sunday), weekly_notification_time='10:00', task_reminders_enabled=true, language='pl'. Creates default settings if none exist (upsert behavior). Returns proper JSON with all settings fields. All tests passed."
+
+  - task: "Update Settings API - PUT /api/settings"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (2026-05-12): PUT /api/settings updates user notification settings via query parameters. Tested all settings: (1) task_reminders_enabled=false - correctly updated. (2) daily_notification_time='19:00' - correctly updated. (3) weekly_notification_day=3, weekly_notification_time='11:00' - both correctly updated. (4) daily_notification_enabled=false - correctly updated. All updates persist and return updated settings object. Upsert behavior works correctly. All tests passed."
+
+  - task: "Push Token Idempotency (Upsert Behavior)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (2026-05-12): Push token registration is idempotent. Registered 'ExponentPushToken[abc123]' with device_name 'Test iPhone', then registered same token again with device_name 'Test iPhone Updated'. Both requests returned 200 OK. No duplicate tokens created - upsert logic (update_one with upsert=True on user_id+token) correctly updates existing record. Verified by test push showing 2 devices (not 3). All tests passed."
+
+  - task: "Cross-user Push Token Isolation"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (2026-05-12): Push token isolation between users verified. User 1 (push_test@test.pl) registered 2 tokens, then deleted both. User 2 (push_test2@test.pl) registered 1 token. User 1 test push correctly returned 404 (no tokens). User 2 test push correctly returned 200 with 1 device. Each user can only see/test their own tokens. No cross-user token access. All database queries properly filtered by user_id. All tests passed."

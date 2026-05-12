@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from './auth-context';
+import { useRouter } from 'expo-router';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -14,6 +15,7 @@ interface Props {
 
 export default function ProfileModal({ visible, onClose }: Props) {
   const { user, authHeaders, logout } = useAuth();
+  const router = useRouter();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
@@ -141,6 +143,13 @@ export default function ProfileModal({ visible, onClose }: Props) {
             )}
           </View>
 
+          {/* Settings */}
+          <TouchableOpacity style={s.settingsBtn} onPress={() => { onClose(); router.push('/settings'); }} data-testid="profile-settings-btn">
+            <Ionicons name="notifications-outline" size={20} color="#6366F1" />
+            <Text style={s.settingsText}>Ustawienia powiadomień</Text>
+            <Ionicons name="chevron-forward" size={18} color="#6B7280" />
+          </TouchableOpacity>
+
           {/* Logout */}
           <TouchableOpacity style={s.logoutBtn} onPress={() => { onClose(); logout(); }}>
             <Ionicons name="log-out-outline" size={20} color="#EF4444" />
@@ -168,6 +177,8 @@ const s = StyleSheet.create({
   fieldLabel: { color: '#9CA3AF', fontSize: 13, flex: 1 },
   fieldValue: { color: '#FFFFFF', fontSize: 16, marginTop: 6 },
   input: { backgroundColor: '#374151', borderRadius: 10, padding: 12, color: '#FFFFFF', fontSize: 16, marginTop: 8, borderWidth: 1, borderColor: '#4B5563' },
-  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1F2937', borderRadius: 12, padding: 16, marginTop: 20, gap: 10, borderWidth: 1, borderColor: '#EF444430' },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1F2937', borderRadius: 12, padding: 16, marginTop: 12, gap: 10, borderWidth: 1, borderColor: '#EF444430' },
   logoutText: { color: '#EF4444', fontSize: 16, fontWeight: '600' },
+  settingsBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1F2937', borderRadius: 12, padding: 16, marginTop: 20, gap: 10 },
+  settingsText: { color: '#FFFFFF', fontSize: 16, fontWeight: '500', flex: 1 },
 });

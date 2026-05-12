@@ -18,6 +18,9 @@ import re
 import jwt
 from passlib.context import CryptContext
 import chromadb
+import httpx
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 
 
 ROOT_DIR = Path(__file__).parent
@@ -182,6 +185,7 @@ class UserSettings(BaseModel):
     weekly_notification_enabled: bool = True
     weekly_notification_day: int = 6  # Sunday
     weekly_notification_time: str = "10:00"
+    task_reminders_enabled: bool = True
     language: str = "pl"
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -1855,6 +1859,7 @@ async def update_settings(
     weekly_notification_enabled: Optional[bool] = None,
     weekly_notification_day: Optional[int] = None,
     weekly_notification_time: Optional[str] = None,
+    task_reminders_enabled: Optional[bool] = None,
     current_user: dict = Depends(get_current_user)
 ):
     """Update user settings"""
@@ -1870,6 +1875,8 @@ async def update_settings(
         update_data["weekly_notification_day"] = weekly_notification_day
     if weekly_notification_time is not None:
         update_data["weekly_notification_time"] = weekly_notification_time
+    if task_reminders_enabled is not None:
+        update_data["task_reminders_enabled"] = task_reminders_enabled
     
     await db.user_settings.update_one(
         {"user_id": current_user["id"]},
@@ -1895,6 +1902,192 @@ async def learn_user_context(current_user: dict = Depends(get_current_user)):
     await learn_from_notes(user_id=current_user["id"])
     context = await db.user_context.find_one({"user_id": current_user["id"]})
     return context or {"message": "Context learning started"}
+
+# ============================================================
+# PUSH NOTIFICATIONS - Expo Push API + Scheduler
+# ============================================================
+
+EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
+
+class PushTokenInput(BaseModel):
+    token: str
+    device_name: Optional[str] = None
+
+async def send_expo_push(tokens: List[str], title: str, body: str, data: dict = None):
+    """Send push notification via Expo Push API"""
+    if not tokens:
+        return
+    messages = [
+        {
+            "to": token,
+            "sound": "default",
+            "title": title,
+            "body": body,
+            "data": data or {},
+        }
+        for token in tokens
+        if token.startswith("ExponentPushToken[")
+    ]
+    if not messages:
+        return
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                EXPO_PUSH_URL,
+                json=messages,
+                headers={"Content-Type": "application/json"},
+                timeout=10,
+            )
+            logging.info(f"Push sent to {len(messages)} devices: {resp.status_code}")
+    except Exception as e:
+        logging.error(f"Push send error: {e}")
+
+@api_router.post("/push-token")
+async def register_push_token(input: PushTokenInput, current_user: dict = Depends(get_current_user)):
+    """Register an Expo push token for the current user"""
+    await db.push_tokens.update_one(
+        {"user_id": current_user["id"], "token": input.token},
+        {"$set": {
+            "user_id": current_user["id"],
+            "token": input.token,
+            "device_name": input.device_name,
+            "updated_at": datetime.utcnow(),
+        }},
+        upsert=True,
+    )
+    return {"message": "Token registered"}
+
+@api_router.delete("/push-token")
+async def unregister_push_token(token: str, current_user: dict = Depends(get_current_user)):
+    """Remove a push token"""
+    await db.push_tokens.delete_one({"user_id": current_user["id"], "token": token})
+    return {"message": "Token removed"}
+
+@api_router.get("/push-token/test")
+async def test_push_notification(current_user: dict = Depends(get_current_user)):
+    """Send a test push notification to the current user"""
+    tokens_docs = await db.push_tokens.find({"user_id": current_user["id"]}).to_list(10)
+    tokens = [d["token"] for d in tokens_docs]
+    if not tokens:
+        raise HTTPException(status_code=404, detail="Brak zarejestrowanych tokenów push")
+    await send_expo_push(tokens, "Test powiadomienia", "Powiadomienia push działają poprawnie!")
+    return {"message": f"Wysłano testowe powiadomienie na {len(tokens)} urządzeń"}
+
+# --- Scheduler Jobs ---
+
+async def job_daily_reminders():
+    """Check which users should receive daily mood reminder now"""
+    now = datetime.utcnow()
+    current_time = now.strftime("%H:%M")
+    
+    # Find users with daily notifications enabled and matching time
+    settings_cursor = db.user_settings.find({
+        "daily_notification_enabled": True,
+        "daily_notification_time": current_time,
+    })
+    async for setting in settings_cursor:
+        user_id = setting.get("user_id")
+        if not user_id:
+            continue
+        # Check if user already logged mood today
+        today = now.date().isoformat()
+        existing = await db.moods.find_one({"user_id": user_id, "date": today})
+        tokens_docs = await db.push_tokens.find({"user_id": user_id}).to_list(10)
+        tokens = [d["token"] for d in tokens_docs]
+        if tokens:
+            if existing:
+                await send_expo_push(tokens, "Podsumowanie dnia", "Sprawdź swoje dzisiejsze podsumowanie nastroju.")
+            else:
+                await send_expo_push(tokens, "Jak się dziś czujesz?", "Nie zapomnij zapisać swojego nastroju!")
+
+async def job_weekly_summaries():
+    """Check which users should receive weekly summary now"""
+    now = datetime.utcnow()
+    current_time = now.strftime("%H:%M")
+    current_weekday = now.weekday()  # 0=Mon, 6=Sun
+    
+    settings_cursor = db.user_settings.find({
+        "weekly_notification_enabled": True,
+        "weekly_notification_time": current_time,
+        "weekly_notification_day": current_weekday,
+    })
+    async for setting in settings_cursor:
+        user_id = setting.get("user_id")
+        if not user_id:
+            continue
+        tokens_docs = await db.push_tokens.find({"user_id": user_id}).to_list(10)
+        tokens = [d["token"] for d in tokens_docs]
+        if tokens:
+            await send_expo_push(
+                tokens,
+                "Podsumowanie tygodnia",
+                "Twoje tygodniowe podsumowanie nastroju jest gotowe. Sprawdź jak minął Ci tydzień!",
+                {"screen": "summary"},
+            )
+
+async def job_task_reminders():
+    """Check for tasks due in the current minute and notify"""
+    now = datetime.utcnow()
+    current_time = now.strftime("%H:%M")
+    today = now.date().isoformat()
+    current_weekday = now.weekday()
+    
+    # Find tasks scheduled for now
+    tasks = await db.notes.find({
+        "category": "zadania",
+        "scheduled_time": current_time,
+        "is_completed": {"$ne": True},
+        "$or": [
+            {"scheduled_date": today},
+            {"is_recurring": True},
+        ],
+    }).to_list(200)
+    
+    for task in tasks:
+        user_id = task.get("user_id")
+        if not user_id:
+            continue
+        
+        # Check if user has task reminders enabled
+        user_settings = await db.user_settings.find_one({"user_id": user_id})
+        if user_settings and not user_settings.get("task_reminders_enabled", True):
+            continue
+        
+        # For recurring tasks, check if today matches
+        if task.get("is_recurring"):
+            pattern = task.get("recurrence_pattern")
+            rec_days = task.get("recurrence_days", [])
+            if pattern == "daily":
+                pass  # Always matches
+            elif pattern == "weekdays" and current_weekday > 4:
+                continue
+            elif pattern == "custom" and current_weekday not in rec_days:
+                continue
+            elif pattern == "weekly":
+                # Check if same weekday as creation
+                created = task.get("created_at")
+                if created and hasattr(created, "weekday") and created.weekday() != current_weekday:
+                    continue
+            # Check end date
+            end_date = task.get("recurrence_end_date")
+            if end_date and today > end_date:
+                continue
+        
+        tokens_docs = await db.push_tokens.find({"user_id": user_id}).to_list(10)
+        tokens = [d["token"] for d in tokens_docs]
+        if tokens:
+            await send_expo_push(
+                tokens,
+                f"Zadanie: {task.get('title', 'Przypomnienie')}",
+                task.get("text_content", "Czas na wykonanie zadania!") or "Czas na wykonanie zadania!",
+                {"screen": "tasks", "task_id": task.get("id")},
+            )
+
+# Initialize scheduler
+scheduler = AsyncIOScheduler()
+scheduler.add_job(job_daily_reminders, IntervalTrigger(minutes=1), id="daily_reminders", replace_existing=True)
+scheduler.add_job(job_weekly_summaries, IntervalTrigger(minutes=1), id="weekly_summaries", replace_existing=True)
+scheduler.add_job(job_task_reminders, IntervalTrigger(minutes=1), id="task_reminders", replace_existing=True)
 
 # Include router
 app.include_router(api_router)
@@ -1941,6 +2134,10 @@ async def startup_db_setup():
     # user_context: one per user
     await db.user_context.create_index("user_id", unique=True, background=True)
     
+    # push_tokens: user + token
+    await db.push_tokens.create_index([("user_id", 1), ("token", 1)], unique=True, background=True)
+    await db.push_tokens.create_index("user_id", background=True)
+    
     # === MIGRATE ORPHANED DATA ===
     # Delete documents without user_id (legacy data from before auth)
     for coll_name in ["moods", "notes", "chat_messages", "daily_summaries"]:
@@ -1952,6 +2149,10 @@ async def startup_db_setup():
             logging.info(f"Cleaned {result2.deleted_count} null-user docs from {coll_name}")
     
     logging.info("Database setup complete.")
+    
+    # Start the notification scheduler
+    scheduler.start()
+    logging.info("Notification scheduler started.")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
