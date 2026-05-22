@@ -14,7 +14,7 @@ from typing import List, Optional, Dict
 import uuid
 from datetime import datetime, timedelta
 from collections import defaultdict
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+from llm_client import LlmChat, UserMessage
 import base64
 import json
 import re
