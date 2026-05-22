@@ -1,4 +1,7 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -35,14 +38,17 @@ db = client[os.environ['DB_NAME']]
 EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
 
 # Auth
-JWT_SECRET = os.environ.get('JWT_SECRET', str(uuid.uuid4()))
+JWT_SECRET = os.environ.get('JWT_SECRET')
+if not JWT_SECRET:
+    raise RuntimeError("JWT_SECRET environment variable is required and must not be empty")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_HOURS = 168  # 7 days
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer(auto_error=False)
 
 # ChromaDB
-chroma_client = chromadb.Client()
+_chroma_path = os.environ.get("CHROMA_PATH", str(ROOT_DIR / "chroma_data"))
+chroma_client = chromadb.PersistentClient(path=_chroma_path)
 notes_collection = chroma_client.get_or_create_collection("notes_embeddings")
 
 # Auth models
@@ -86,6 +92,10 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 # Create the main app
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Constants
 TIME_OF_DAY_OPTIONS = ["morning", "midday", "evening"]
@@ -732,7 +742,8 @@ def embed_note_to_chroma(note_id: str, user_id: str, text: str):
         logging.error(f"ChromaDB embed error: {e}")
 
 @api_router.post("/auth/register")
-async def register(input: UserRegister):
+@limiter.limit("5/minute")
+async def register(request: Request, input: UserRegister):
     existing = await db.users_auth.find_one({"email": input.email.lower()}, {"_id": 0})
     if existing:
         raise HTTPException(status_code=400, detail="Email już zarejestrowany")
@@ -749,7 +760,8 @@ async def register(input: UserRegister):
     return {"token": token, "user": {"id": user_id, "email": input.email.lower(), "name": input.name}}
 
 @api_router.post("/auth/login")
-async def login(input: UserLogin):
+@limiter.limit("10/minute")
+async def login(request: Request, input: UserLogin):
     user = await db.users_auth.find_one({"email": input.email.lower()}, {"_id": 0})
     if not user or not pwd_context.verify(input.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Nieprawidłowy email lub hasło")
@@ -2092,10 +2104,13 @@ scheduler.add_job(job_task_reminders, IntervalTrigger(minutes=1), id="task_remin
 # Include router
 app.include_router(api_router)
 
+_raw_origins = os.environ.get("ALLOWED_ORIGINS", "http://localhost:8081,http://localhost:3000")
+allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

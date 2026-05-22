@@ -14,6 +14,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { format, subDays, subMonths } from 'date-fns';
 import * as Clipboard from 'expo-clipboard';
 
+import { useAuth } from './auth-context';
+
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 interface MoodLayers {
@@ -42,6 +44,7 @@ interface ExportData {
 type ExportRange = 'all' | '30days' | '90days' | 'year';
 
 export default function ExportScreen() {
+  const { authHeaders } = useAuth();
   const [totalEntries, setTotalEntries] = useState(0);
   const [uniqueDays, setUniqueDays] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -51,7 +54,7 @@ export default function ExportScreen() {
   const fetchStats = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/api/moods`);
+      const response = await fetch(`${API_URL}/api/moods`, { headers: authHeaders() });
       if (response.ok) {
         const data = await response.json();
         setTotalEntries(data.length);
@@ -94,7 +97,7 @@ export default function ExportScreen() {
       params.append('end_date', end);
       url += `?${params.toString()}`;
 
-      const response = await fetch(url);
+      const response = await fetch(url, { headers: authHeaders() });
       if (!response.ok) throw new Error('Export failed');
 
       const data: ExportData = await response.json();
@@ -170,12 +173,13 @@ export default function ExportScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const response = await fetch(`${API_URL}/api/moods`);
+              const response = await fetch(`${API_URL}/api/moods`, { headers: authHeaders() });
               const moods = await response.json();
-              
+
               for (const mood of moods) {
                 await fetch(`${API_URL}/api/moods/${mood.id}`, {
                   method: 'DELETE',
+                  headers: authHeaders(),
                 });
               }
               
