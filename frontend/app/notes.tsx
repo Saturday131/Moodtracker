@@ -572,7 +572,8 @@ export default function NotesScreen() {
         }}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior="padding"
+          keyboardVerticalOffset={Platform.OS === 'android' ? 25 : 0}
           style={styles.modalContainer}
         >
           <View style={styles.modalHeader}>

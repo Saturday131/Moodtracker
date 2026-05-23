@@ -51,7 +51,7 @@ export default function ChatScreen() {
       const storedSessionId = await AsyncStorage.getItem('chat_session_id');
       if (storedSessionId) {
         setSessionId(storedSessionId);
-        const response = await fetch(`${API_URL}/api/chat/history/${storedSessionId}`);
+        const response = await fetch(`${API_URL}/api/chat/history/${storedSessionId}`, { headers: authHeaders() });
         if (response.ok) {
           const history = await response.json();
           if (history.length > 0) {
@@ -101,7 +101,7 @@ export default function ChatScreen() {
         // Use task modification endpoint
         response = await fetch(`${API_URL}/api/tasks/chat-modify`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify({
             user_message: text.trim(),
             session_id: sessionId,
@@ -123,7 +123,7 @@ export default function ChatScreen() {
         // Use regular chat endpoint
         response = await fetch(`${API_URL}/api/chat`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify({
             message: text.trim(),
             session_id: sessionId,
@@ -196,7 +196,7 @@ export default function ChatScreen() {
   const getWeeklySummary = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/weekly-summary`);
+      const response = await fetch(`${API_URL}/api/weekly-summary`, { headers: authHeaders() });
       if (response.ok) {
         const data = await response.json();
         const summaryMessage: Message = {
