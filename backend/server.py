@@ -48,6 +48,8 @@ RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 resend.api_key = RESEND_API_KEY
 GMAIL_USER = os.environ.get('GMAIL_USER', '')
 GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD', '')
+BREVO_API_KEY = os.environ.get('BREVO_API_KEY', '')
+BREVO_SENDER = os.environ.get('BREVO_SENDER', GMAIL_USER)  # defaults to GMAIL_USER if set
 RESET_TOKEN_EXPIRY_MINUTES = 30
 
 # Auth
@@ -788,16 +790,17 @@ async def login(request: Request, input: UserLogin):
     token = create_jwt(user["id"], user["email"])
     return {"token": token, "user": {"id": user["id"], "email": user["email"], "name": user["name"]}}
 
-def send_reset_email(to_email: str, token: str):
-    """Send password reset email via Gmail SMTP or Resend, whichever is configured."""
+async def send_reset_email(to_email: str, token: str):
+    """Send password reset email. Tries Brevo HTTP API first (works on Render),
+    falls back to Gmail SMTP (works locally), then Resend."""
     subject = "Resetowanie hasła – Ferment Tracker"
     html_body = f"""
     <div style="font-family: sans-serif; max-width: 480px; margin: auto;">
         <h2>Resetowanie hasła</h2>
         <p>Otrzymaliśmy prośbę o zresetowanie hasła dla konta <strong>{to_email}</strong>.</p>
         <p>Twój kod resetowania hasła:</p>
-        <div style="background: #f4f4f4; padding: 16px; border-radius: 8px; font-size: 24px;
-                    letter-spacing: 4px; text-align: center; font-weight: bold;">
+        <div style="background: #f4f4f4; padding: 16px; border-radius: 8px; font-size: 32px;
+                    letter-spacing: 8px; text-align: center; font-weight: bold; color: #333;">
             {token}
         </div>
         <p>Kod jest ważny przez {RESET_TOKEN_EXPIRY_MINUTES} minut.</p>
@@ -805,21 +808,52 @@ def send_reset_email(to_email: str, token: str):
     </div>
     """
 
+    # Option 1: Brevo HTTP API (recommended for Render — no SMTP, pure HTTPS)
+    if BREVO_API_KEY and BREVO_SENDER:
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post(
+                    "https://api.brevo.com/v3/smtp/email",
+                    headers={
+                        "api-key": BREVO_API_KEY,
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "sender": {"name": "Ferment Tracker", "email": BREVO_SENDER},
+                        "to": [{"email": to_email}],
+                        "subject": subject,
+                        "htmlContent": html_body,
+                    },
+                )
+            if resp.status_code in (200, 201):
+                logging.info(f"Reset email sent via Brevo to {to_email}")
+                return
+            else:
+                logging.error(f"Brevo send failed: {resp.status_code} {resp.text}")
+        except Exception as e:
+            logging.error(f"Brevo send error: {e}")
+
+    # Option 2: Gmail SMTP (works locally, blocked on Render free tier)
     if GMAIL_USER and GMAIL_APP_PASSWORD:
         try:
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = subject
-            msg["From"] = f"Ferment Tracker <{GMAIL_USER}>"
-            msg["To"] = to_email
-            msg.attach(MIMEText(html_body, "html"))
-            with smtplib.SMTP("smtp.gmail.com", 587) as server:
-                server.starttls()
-                server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-                server.sendmail(GMAIL_USER, to_email, msg.as_string())
-            logging.info(f"Reset email sent via Gmail to {to_email}")
+            def _smtp_send():
+                msg = MIMEMultipart("alternative")
+                msg["Subject"] = subject
+                msg["From"] = f"Ferment Tracker <{GMAIL_USER}>"
+                msg["To"] = to_email
+                msg.attach(MIMEText(html_body, "html"))
+                with smtplib.SMTP("smtp.gmail.com", 587) as srv:
+                    srv.starttls()
+                    srv.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+                    srv.sendmail(GMAIL_USER, to_email, msg.as_string())
+            await asyncio.to_thread(_smtp_send)
+            logging.info(f"Reset email sent via Gmail SMTP to {to_email}")
+            return
         except Exception as e:
-            logging.error(f"Gmail send failed: {e}")
-    elif RESEND_API_KEY:
+            logging.error(f"Gmail SMTP send failed: {e}")
+
+    # Option 3: Resend (requires verified domain for sending to arbitrary emails)
+    if RESEND_API_KEY:
         try:
             resend.Emails.send({
                 "from": "Ferment Tracker <onboarding@resend.dev>",
@@ -828,10 +862,11 @@ def send_reset_email(to_email: str, token: str):
                 "html": html_body,
             })
             logging.info(f"Reset email sent via Resend to {to_email}")
+            return
         except Exception as e:
             logging.error(f"Resend send failed: {e}")
-    else:
-        logging.warning("No email provider configured — reset token not sent by email")
+
+    logging.warning("No email provider succeeded — reset token not delivered by email")
 
 @api_router.post("/auth/forgot-password")
 @limiter.limit("3/minute")
@@ -852,8 +887,7 @@ async def forgot_password(request: Request, input: ForgotPasswordRequest):
         "used": False,
     })
 
-    # Run blocking SMTP call in a thread so it doesn't block the async event loop
-    await asyncio.to_thread(send_reset_email, user["email"], token)
+    await send_reset_email(user["email"], token)
     return {"message": "Jeśli konto istnieje, wysłaliśmy link do resetowania hasła."}
 
 @api_router.post("/auth/reset-password")
