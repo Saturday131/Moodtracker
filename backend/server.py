@@ -189,7 +189,7 @@ class ReminderSettings(BaseModel):
 
 class UserSettings(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    user_id: str = "default_user"
+    user_id: str = ""
     daily_notification_enabled: bool = True
     daily_notification_time: str = "21:00"
     weekly_notification_enabled: bool = True
@@ -203,7 +203,7 @@ class UserSettings(BaseModel):
 class UserContext(BaseModel):
     """Stores learned context about the user from notes and chats"""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    user_id: str = "default_user"
+    user_id: str = ""
     learned_topics: List[str] = []  # Topics user frequently discusses
     pending_tasks: List[dict] = []  # Tasks extracted from notes {task, date_mentioned, due_date}
     mood_patterns: dict = {}  # Learned mood patterns
@@ -814,7 +814,7 @@ async def semantic_search(q: str, n: int = 10, current_user: dict = Depends(get_
     if not note_ids:
         return {"results": []}
     
-    notes = await db.notes.find({"id": {"$in": note_ids}}, {"_id": 0, "voice_base64": 0, "image_base64": 0}).to_list(n)
+    notes = await db.notes.find({"id": {"$in": note_ids}, "user_id": user_id}, {"_id": 0, "voice_base64": 0, "image_base64": 0}).to_list(n)
     notes_map = {n["id"]: n for n in notes}
     
     ordered = []
@@ -2134,6 +2134,7 @@ async def startup_db_setup():
     # notes: fast lookup by user + category + date
     await db.notes.create_index([("user_id", 1), ("category", 1), ("created_at", -1)], background=True)
     await db.notes.create_index([("user_id", 1), ("scheduled_date", 1)], background=True)
+    await db.notes.create_index([("user_id", 1), ("mood_date", 1)], background=True)
     await db.notes.create_index([("user_id", 1), ("is_recurring", 1)], background=True)
     await db.notes.create_index("id", unique=True, background=True)
     

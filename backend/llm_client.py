@@ -1,4 +1,9 @@
-from openai import AsyncOpenAI
+import logging
+from openai import AsyncOpenAI, RateLimitError, AuthenticationError
+
+logger = logging.getLogger(__name__)
+
+AI_UNAVAILABLE_MSG = "Funkcja AI jest chwilowo niedostępna. Spróbuj ponownie później."
 
 
 class UserMessage:
@@ -17,12 +22,22 @@ class LlmChat:
         return self
 
     async def send_message(self, message: UserMessage) -> str:
-        client = AsyncOpenAI(api_key=self.api_key)
-        response = await client.chat.completions.create(
-            model=self._model,
-            messages=[
-                {"role": "system", "content": self.system_message},
-                {"role": "user", "content": message.text},
-            ],
-        )
-        return response.choices[0].message.content
+        try:
+            client = AsyncOpenAI(api_key=self.api_key)
+            response = await client.chat.completions.create(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": self.system_message},
+                    {"role": "user", "content": message.text},
+                ],
+            )
+            return response.choices[0].message.content
+        except RateLimitError:
+            logger.warning("OpenAI rate limit or quota exceeded")
+            return AI_UNAVAILABLE_MSG
+        except AuthenticationError:
+            logger.error("OpenAI authentication failed — check EMERGENT_LLM_KEY")
+            return AI_UNAVAILABLE_MSG
+        except Exception as e:
+            logger.error(f"LLM error: {e}")
+            return AI_UNAVAILABLE_MSG

@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "frontend",
-    "slug": "frontend",
+    "name": "Ferment Tracker",
+    "slug": "ferment-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "frontend",
+    "icon": "./assets/images/Ferment Tracker Icon.png",
+    "scheme": "ferment-tracker",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -13,11 +13,11 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/images/Ferment Tracker Icon.png",
         "backgroundColor": "#000"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.fermentaf.frontend"
+      "package": "com.fermentaf.fermenttracker"
     },
     "web": {
       "bundler": "metro",
@@ -29,7 +29,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-image.png",
+          "image": "./assets/images/Ferment Tracker Icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#000"
