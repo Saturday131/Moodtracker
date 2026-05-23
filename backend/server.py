@@ -12,6 +12,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 import uuid
+import secrets
 from datetime import datetime, timedelta
 from collections import defaultdict
 from llm_client import LlmChat, UserMessage
@@ -22,6 +23,7 @@ import jwt
 from passlib.context import CryptContext
 import chromadb
 import httpx
+import resend
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
@@ -36,6 +38,11 @@ db = client[os.environ['DB_NAME']]
 
 # LLM Key
 EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
+
+# Resend (email)
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
+resend.api_key = RESEND_API_KEY
+RESET_TOKEN_EXPIRY_MINUTES = 30
 
 # Auth
 JWT_SECRET = os.environ.get('JWT_SECRET')
@@ -66,6 +73,13 @@ class UserProfile(BaseModel):
     email: str
     name: str
     created_at: str
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
 
 def create_jwt(user_id: str, email: str) -> str:
     payload = {
@@ -767,6 +781,66 @@ async def login(request: Request, input: UserLogin):
         raise HTTPException(status_code=401, detail="Nieprawidłowy email lub hasło")
     token = create_jwt(user["id"], user["email"])
     return {"token": token, "user": {"id": user["id"], "email": user["email"], "name": user["name"]}}
+
+@api_router.post("/auth/forgot-password")
+@limiter.limit("3/minute")
+async def forgot_password(request: Request, input: ForgotPasswordRequest):
+    user = await db.users_auth.find_one({"email": input.email.lower()}, {"_id": 0})
+    # Always return success to avoid revealing whether email exists
+    if not user:
+        return {"message": "Jeśli konto istnieje, wysłaliśmy link do resetowania hasła."}
+
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.utcnow() + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)
+    await db.password_reset_tokens.insert_one({
+        "token": token,
+        "user_id": user["id"],
+        "email": user["email"],
+        "expires_at": expires_at,
+        "used": False,
+    })
+
+    if RESEND_API_KEY:
+        try:
+            resend.Emails.send({
+                "from": "Ferment Tracker <onboarding@resend.dev>",
+                "to": [user["email"]],
+                "subject": "Resetowanie hasła – Ferment Tracker",
+                "html": f"""
+                <div style="font-family: sans-serif; max-width: 480px; margin: auto;">
+                    <h2>Resetowanie hasła</h2>
+                    <p>Otrzymaliśmy prośbę o zresetowanie hasła dla konta <strong>{user['email']}</strong>.</p>
+                    <p>Twój kod resetowania hasła:</p>
+                    <div style="background: #f4f4f4; padding: 16px; border-radius: 8px; font-size: 24px; letter-spacing: 4px; text-align: center; font-weight: bold;">
+                        {token}
+                    </div>
+                    <p>Kod jest ważny przez {RESET_TOKEN_EXPIRY_MINUTES} minut.</p>
+                    <p>Jeśli nie prosiłeś o reset hasła, zignoruj tę wiadomość.</p>
+                </div>
+                """,
+            })
+        except Exception as e:
+            logging.error(f"Failed to send reset email: {e}")
+
+    return {"message": "Jeśli konto istnieje, wysłaliśmy link do resetowania hasła."}
+
+@api_router.post("/auth/reset-password")
+@limiter.limit("5/minute")
+async def reset_password(request: Request, input: ResetPasswordRequest):
+    record = await db.password_reset_tokens.find_one({"token": input.token, "used": False})
+    if not record:
+        raise HTTPException(status_code=400, detail="Nieprawidłowy lub wygasły token resetowania hasła.")
+    if datetime.utcnow() > record["expires_at"]:
+        await db.password_reset_tokens.delete_one({"token": input.token})
+        raise HTTPException(status_code=400, detail="Token resetowania hasła wygasł. Spróbuj ponownie.")
+    if len(input.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Hasło musi mieć co najmniej 6 znaków.")
+
+    new_hash = pwd_context.hash(input.new_password)
+    await db.users_auth.update_one({"id": record["user_id"]}, {"$set": {"password_hash": new_hash}})
+    await db.password_reset_tokens.update_one({"token": input.token}, {"$set": {"used": True}})
+
+    return {"message": "Hasło zostało zmienione. Możesz się teraz zalogować."}
 
 @api_router.get("/auth/me")
 async def get_me(current_user: dict = Depends(get_current_user)):
@@ -2153,6 +2227,10 @@ async def startup_db_setup():
     # push_tokens: user + token
     await db.push_tokens.create_index([("user_id", 1), ("token", 1)], unique=True, background=True)
     await db.push_tokens.create_index("user_id", background=True)
+
+    # password_reset_tokens: fast lookup by token, auto-expire
+    await db.password_reset_tokens.create_index("token", unique=True, background=True)
+    await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0, background=True)
     
     # === MIGRATE ORPHANED DATA ===
     # Delete documents without user_id (legacy data from before auth)
