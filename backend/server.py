@@ -2258,6 +2258,11 @@ scheduler.add_job(job_task_reminders, IntervalTrigger(minutes=1), id="task_remin
 # Include router
 app.include_router(api_router)
 
+@app.get("/health")
+async def health_check():
+    """Lightweight endpoint used by uptime monitors to keep the service warm."""
+    return {"status": "ok"}
+
 _raw_origins = os.environ.get("ALLOWED_ORIGINS", "http://localhost:8081,http://localhost:3000")
 allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
