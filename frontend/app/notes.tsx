@@ -995,7 +995,7 @@ export default function NotesScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setShowDetailModal(false)}
       >
-        <View style={styles.modalContainer}>
+        <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
             <TouchableOpacity
               data-testid="detail-modal-close"
@@ -1150,7 +1150,7 @@ export default function NotesScreen() {
               )}
             </ScrollView>
           )}
-        </View>
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );

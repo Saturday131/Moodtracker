@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Platform, ActivityIndicator, View } from 'react-native';
+import { Platform, ActivityIndicator, View, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './auth-context';
 import AuthScreen from './auth-screen';
-import { useEffect, useRef } from 'react';
+import ProfileModal from './profile-modal';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 
@@ -114,6 +114,18 @@ function NotificationRegistrar() {
   return null;
 }
 
+function ProfileButton() {
+  const [showProfile, setShowProfile] = useState(false);
+  return (
+    <>
+      <TouchableOpacity onPress={() => setShowProfile(true)} style={{ marginRight: 16 }}>
+        <Ionicons name="person-circle-outline" size={28} color="#FFFFFF" />
+      </TouchableOpacity>
+      <ProfileModal visible={showProfile} onClose={() => setShowProfile(false)} />
+    </>
+  );
+}
+
 function AppContent() {
   const { user, loading } = useAuth();
   const insets = useSafeAreaInsets();
@@ -135,6 +147,7 @@ function AppContent() {
       <NotificationRegistrar />
       <Tabs
         screenOptions={{
+          headerRight: () => <ProfileButton />,
           tabBarActiveTintColor: '#6366F1',
           tabBarInactiveTintColor: '#9CA3AF',
           tabBarStyle: {

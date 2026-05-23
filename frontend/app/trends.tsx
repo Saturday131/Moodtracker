@@ -24,6 +24,7 @@ interface Analytics {
   average_composite: number;
   by_time_of_day: Record<string, { layers: Record<string, number>; composite: number; count: number }>;
   by_day_of_week: Record<string, { layers: Record<string, number>; composite: number; count: number }>;
+  daily_composite: Record<string, number>;
 }
 
 interface CompareData {
@@ -56,7 +57,7 @@ const TIME_EMOJIS = {
 };
 
 type TimeRange = '7days' | '30days' | '90days';
-type ViewMode = 'overview' | 'layers' | 'time' | 'days';
+type ViewMode = 'overview' | 'timeline' | 'time' | 'days';
 
 function getScoreColor(score: number): string {
   const index = Math.min(Math.max(Math.round(score) - 1, 0), 4);
@@ -138,7 +139,7 @@ export default function TrendsScreen() {
       <View style={styles.viewModeContainer}>
         {[
           { key: 'overview', label: 'Przegląd' },
-          { key: 'layers', label: 'Wg Warstwy' },
+          { key: 'timeline', label: 'Przebieg' },
           { key: 'time', label: 'Wg Pory' },
           { key: 'days', label: 'Wg Dnia' },
         ].map((mode) => (
@@ -416,6 +417,51 @@ export default function TrendsScreen() {
     );
   };
 
+  const renderTimeline = () => {
+    if (!analytics?.daily_composite) return null;
+    const entries = Object.entries(analytics.daily_composite);
+    if (entries.length === 0) return null;
+
+    const chartData = entries.map(([date, value]) => ({
+      value,
+      dataPointText: value.toFixed(1),
+      label: date.slice(5), // MM-DD
+    }));
+
+    return (
+      <View style={styles.analysisCard}>
+        <Text style={styles.cardTitle}>Przebieg Nastroju</Text>
+        <Text style={styles.cardSubtitle}>
+          Dzienny wynik łączny – ostatnie {analytics.period_days} dni
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <LineChart
+            data={chartData}
+            height={180}
+            spacing={Math.max(30, Math.min(60, (SCREEN_WIDTH - 60) / Math.max(chartData.length, 1)))}
+            initialSpacing={10}
+            color="#6366F1"
+            thickness={2}
+            startFillColor="#6366F130"
+            endFillColor="transparent"
+            areaChart
+            curved
+            hideDataPoints={chartData.length > 20}
+            dataPointsColor="#6366F1"
+            xAxisColor="#374151"
+            yAxisColor="#374151"
+            yAxisTextStyle={{ color: '#9CA3AF', fontSize: 10 }}
+            xAxisLabelTextStyle={{ color: '#9CA3AF', fontSize: 9 }}
+            noOfSections={5}
+            maxValue={5}
+            backgroundColor="transparent"
+            rulesColor="#1F2937"
+          />
+        </ScrollView>
+      </View>
+    );
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -439,9 +485,9 @@ export default function TrendsScreen() {
         ) : (
           <>
             {viewMode === 'overview' && renderOverview()}
+            {viewMode === 'timeline' && renderTimeline()}
             {viewMode === 'time' && renderByTime()}
             {viewMode === 'days' && renderByDay()}
-            {viewMode === 'layers' && renderByLayers()}
           </>
         )}
       </ScrollView>

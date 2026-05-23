@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Ferment Tracker",
-    "slug": "ferment-tracker",
+    "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/Ferment Tracker Icon.png",
@@ -45,6 +45,7 @@
       "eas": {
         "projectId": "0abda648-0afa-4c00-8894-35ba30f794fc"
       }
-    }
+    },
+    "owner": "fermentaf"
   }
 }

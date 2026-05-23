@@ -24,6 +24,9 @@ from passlib.context import CryptContext
 import chromadb
 import httpx
 import resend
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
@@ -39,9 +42,11 @@ db = client[os.environ['DB_NAME']]
 # LLM Key
 EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
 
-# Resend (email)
+# Email (Resend or Gmail SMTP)
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 resend.api_key = RESEND_API_KEY
+GMAIL_USER = os.environ.get('GMAIL_USER', '')
+GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD', '')
 RESET_TOKEN_EXPIRY_MINUTES = 30
 
 # Auth
@@ -782,6 +787,51 @@ async def login(request: Request, input: UserLogin):
     token = create_jwt(user["id"], user["email"])
     return {"token": token, "user": {"id": user["id"], "email": user["email"], "name": user["name"]}}
 
+def send_reset_email(to_email: str, token: str):
+    """Send password reset email via Gmail SMTP or Resend, whichever is configured."""
+    subject = "Resetowanie hasła – Ferment Tracker"
+    html_body = f"""
+    <div style="font-family: sans-serif; max-width: 480px; margin: auto;">
+        <h2>Resetowanie hasła</h2>
+        <p>Otrzymaliśmy prośbę o zresetowanie hasła dla konta <strong>{to_email}</strong>.</p>
+        <p>Twój kod resetowania hasła:</p>
+        <div style="background: #f4f4f4; padding: 16px; border-radius: 8px; font-size: 24px;
+                    letter-spacing: 4px; text-align: center; font-weight: bold;">
+            {token}
+        </div>
+        <p>Kod jest ważny przez {RESET_TOKEN_EXPIRY_MINUTES} minut.</p>
+        <p>Jeśli nie prosiłeś o reset hasła, zignoruj tę wiadomość.</p>
+    </div>
+    """
+
+    if GMAIL_USER and GMAIL_APP_PASSWORD:
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = f"Ferment Tracker <{GMAIL_USER}>"
+            msg["To"] = to_email
+            msg.attach(MIMEText(html_body, "html"))
+            with smtplib.SMTP("smtp.gmail.com", 587) as server:
+                server.starttls()
+                server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+                server.sendmail(GMAIL_USER, to_email, msg.as_string())
+            logging.info(f"Reset email sent via Gmail to {to_email}")
+        except Exception as e:
+            logging.error(f"Gmail send failed: {e}")
+    elif RESEND_API_KEY:
+        try:
+            resend.Emails.send({
+                "from": "Ferment Tracker <onboarding@resend.dev>",
+                "to": [to_email],
+                "subject": subject,
+                "html": html_body,
+            })
+            logging.info(f"Reset email sent via Resend to {to_email}")
+        except Exception as e:
+            logging.error(f"Resend send failed: {e}")
+    else:
+        logging.warning("No email provider configured — reset token not sent by email")
+
 @api_router.post("/auth/forgot-password")
 @limiter.limit("3/minute")
 async def forgot_password(request: Request, input: ForgotPasswordRequest):
@@ -800,28 +850,7 @@ async def forgot_password(request: Request, input: ForgotPasswordRequest):
         "used": False,
     })
 
-    if RESEND_API_KEY:
-        try:
-            resend.Emails.send({
-                "from": "Ferment Tracker <onboarding@resend.dev>",
-                "to": [user["email"]],
-                "subject": "Resetowanie hasła – Ferment Tracker",
-                "html": f"""
-                <div style="font-family: sans-serif; max-width: 480px; margin: auto;">
-                    <h2>Resetowanie hasła</h2>
-                    <p>Otrzymaliśmy prośbę o zresetowanie hasła dla konta <strong>{user['email']}</strong>.</p>
-                    <p>Twój kod resetowania hasła:</p>
-                    <div style="background: #f4f4f4; padding: 16px; border-radius: 8px; font-size: 24px; letter-spacing: 4px; text-align: center; font-weight: bold;">
-                        {token}
-                    </div>
-                    <p>Kod jest ważny przez {RESET_TOKEN_EXPIRY_MINUTES} minut.</p>
-                    <p>Jeśli nie prosiłeś o reset hasła, zignoruj tę wiadomość.</p>
-                </div>
-                """,
-            })
-        except Exception as e:
-            logging.error(f"Failed to send reset email: {e}")
-
+    send_reset_email(user["email"], token)
     return {"message": "Jeśli konto istnieje, wysłaliśmy link do resetowania hasła."}
 
 @api_router.post("/auth/reset-password")
@@ -1042,6 +1071,19 @@ async def get_analytics_summary(days: int = 30, current_user: dict = Depends(get
         }
         day_avg[DAY_NAMES[i]]["composite"] = calculate_composite_score(day_avg[DAY_NAMES[i]]["layers"])
     
+    # Daily composite scores for timeline chart
+    daily_scores: dict = {}
+    for mood in moods:
+        date = mood["date"]
+        score = calculate_composite_score(mood.get("layers", {}))
+        if date not in daily_scores:
+            daily_scores[date] = []
+        daily_scores[date].append(score)
+    daily_composite = {
+        date: round(sum(scores) / len(scores), 2)
+        for date, scores in sorted(daily_scores.items())
+    }
+
     return {
         "period_days": days,
         "total_entries": len(moods),
@@ -1049,6 +1091,7 @@ async def get_analytics_summary(days: int = 30, current_user: dict = Depends(get
         "average_composite": avg_composite,
         "by_time_of_day": time_avg,
         "by_day_of_week": day_avg,
+        "daily_composite": daily_composite,
         "layer_definitions": MOOD_LAYERS
     }
 
