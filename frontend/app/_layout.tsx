@@ -44,7 +44,7 @@ async function registerForPushNotifications(authHeaders: Record<string, string>)
 
     // Get the Expo push token
     const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: undefined, // Uses the project from app.json
+      projectId: '0abda648-0afa-4c00-8894-35ba30f794fc',
     });
     const token = tokenData.data;
     console.log('Expo Push Token:', token);

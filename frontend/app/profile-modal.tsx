@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, Modal, ScrollView, Alert, ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from './auth-context';
 import { useRouter } from 'expo-router';
@@ -68,7 +69,7 @@ export default function ProfileModal({ visible, onClose }: Props) {
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={s.container}>
+      <SafeAreaView style={s.container}>
         <View style={s.header}>
           <TouchableOpacity onPress={onClose}>
             <Ionicons name="close" size={24} color="#FFFFFF" />
@@ -156,7 +157,7 @@ export default function ProfileModal({ visible, onClose }: Props) {
             <Text style={s.logoutText}>Wyloguj się</Text>
           </TouchableOpacity>
         </ScrollView>
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 }

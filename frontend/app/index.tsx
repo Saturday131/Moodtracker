@@ -14,12 +14,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
 import { useAuth } from './auth-context';
-import ProfileModal from './profile-modal';
-
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 interface MoodLayers {
@@ -77,9 +74,7 @@ const SCORE_LABELS = ['Bardzo Niski', 'Niski', 'Średni', 'Dobry', 'Świetny'];
 const SCORE_COLORS = ['#EF4444', '#F97316', '#EAB308', '#84CC16', '#22C55E'];
 
 export default function TodayScreen() {
-  const router = useRouter();
   const { authHeaders, user, logout } = useAuth();
-  const [showProfile, setShowProfile] = useState(false);
   const [selectedTime, setSelectedTime] = useState<string>('morning');
   const [layers, setLayers] = useState<MoodLayers>({
     overall: 3,
@@ -216,7 +211,6 @@ export default function TodayScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ProfileModal visible={showProfile} onClose={() => setShowProfile(false)} />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
@@ -226,18 +220,10 @@ export default function TodayScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Header with Settings */}
+          {/* Header */}
           <View style={styles.headerRow}>
-            <View style={styles.headerLeft}>
-              <Text style={styles.dateText}>{displayDate}</Text>
-              <Text style={styles.title}>Jak się czujesz?</Text>
-            </View>
-            <TouchableOpacity 
-              style={styles.settingsButton}
-              onPress={() => setShowProfile(true)}
-            >
-              <Ionicons name="person-circle-outline" size={28} color="#9CA3AF" />
-            </TouchableOpacity>
+            <Text style={styles.dateText}>{displayDate}</Text>
+            <Text style={styles.title}>Jak się czujesz?</Text>
           </View>
 
           {/* Daily Summary Button */}
@@ -481,16 +467,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
     marginBottom: 16,
-  },
-  headerLeft: {
-    flex: 1,
-  },
-  settingsButton: {
-    padding: 8,
   },
   dateText: {
     fontSize: 14,

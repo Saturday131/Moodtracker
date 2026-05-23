@@ -10,6 +10,7 @@ import {
   Platform,
   ScrollView,
   Alert,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -333,9 +334,11 @@ export default function AuthScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.logoSection}>
-            <View style={styles.logoCircle}>
-              <Ionicons name="happy" size={48} color="#6366F1" />
-            </View>
+            <Image
+              source={require('../assets/images/Ferment Tracker Icon.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
             <Text style={styles.appName}>Ferment Tracker</Text>
             <Text style={styles.appTagline}>Twój dziennik nastroju</Text>
           </View>
@@ -360,10 +363,9 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   logoSection: { alignItems: 'center', marginBottom: 40 },
-  logoCircle: {
-    width: 96, height: 96, borderRadius: 48,
-    backgroundColor: '#1F2937', justifyContent: 'center', alignItems: 'center',
-    marginBottom: 16, borderWidth: 2, borderColor: '#6366F130',
+  logoImage: {
+    width: 110, height: 110, borderRadius: 24,
+    marginBottom: 16,
   },
   appName: { color: '#FFFFFF', fontSize: 28, fontWeight: 'bold' },
   appTagline: { color: '#9CA3AF', fontSize: 15, marginTop: 4 },

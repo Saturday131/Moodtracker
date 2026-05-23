@@ -8,6 +8,7 @@ import {
   Switch,
   ActivityIndicator,
   Alert,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,22 +18,13 @@ import { useAuth } from './auth-context';
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 const DAYS_OF_WEEK = [
-  { key: 0, label: 'Poniedziałek' },
-  { key: 1, label: 'Wtorek' },
-  { key: 2, label: 'Środa' },
-  { key: 3, label: 'Czwartek' },
-  { key: 4, label: 'Piątek' },
-  { key: 5, label: 'Sobota' },
-  { key: 6, label: 'Niedziela' },
-];
-
-const DAILY_TIME_OPTIONS = [
-  '07:00', '08:00', '09:00', '10:00',
-  '18:00', '19:00', '20:00', '21:00', '22:00',
-];
-
-const WEEKLY_TIME_OPTIONS = [
-  '08:00', '09:00', '10:00', '11:00', '12:00',
+  { key: 0, label: 'Pn' },
+  { key: 1, label: 'Wt' },
+  { key: 2, label: 'Śr' },
+  { key: 3, label: 'Cz' },
+  { key: 4, label: 'Pt' },
+  { key: 5, label: 'So' },
+  { key: 6, label: 'Nd' },
 ];
 
 interface Settings {
@@ -58,6 +50,12 @@ export default function SettingsScreen() {
     weekly_notification_time: '10:00',
     task_reminders_enabled: true,
   });
+
+  // Time picker state
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [pickerTarget, setPickerTarget] = useState<'daily' | 'weekly'>('daily');
+  const [pickerHour, setPickerHour] = useState(21);
+  const [pickerMinute, setPickerMinute] = useState(0);
 
   useEffect(() => {
     fetchSettings();
@@ -91,12 +89,12 @@ export default function SettingsScreen() {
     try {
       const params = new URLSearchParams();
       params.append(key, String(value));
-      
+
       const response = await fetch(`${API_URL}/api/settings?${params.toString()}`, {
         method: 'PUT',
         headers: authHeaders(),
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setSettings({
@@ -113,6 +111,25 @@ export default function SettingsScreen() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const openTimePicker = (target: 'daily' | 'weekly') => {
+    const time = target === 'daily'
+      ? settings.daily_notification_time
+      : settings.weekly_notification_time;
+    const [h, m] = time.split(':').map(Number);
+    setPickerHour(h);
+    setPickerMinute(m);
+    setPickerTarget(target);
+    setShowTimePicker(true);
+  };
+
+  const confirmTime = () => {
+    const time = `${pickerHour.toString().padStart(2, '0')}:${pickerMinute.toString().padStart(2, '0')}`;
+    const key = pickerTarget === 'daily' ? 'daily_notification_time' : 'weekly_notification_time';
+    setSettings(prev => ({ ...prev, [key]: time }));
+    saveSettings(key, time);
+    setShowTimePicker(false);
   };
 
   const sendTestNotification = async () => {
@@ -207,30 +224,13 @@ export default function SettingsScreen() {
           </View>
 
           {settings.daily_notification_enabled && (
-            <View style={styles.timeSelector}>
+            <View style={styles.timePickerRow}>
               <Text style={styles.timeSelectorLabel}>Godzina powiadomienia</Text>
-              <View style={styles.timeOptions}>
-                {DAILY_TIME_OPTIONS.map((time) => (
-                  <TouchableOpacity
-                    key={time}
-                    style={[
-                      styles.timeOption,
-                      settings.daily_notification_time === time && styles.timeOptionActive,
-                    ]}
-                    onPress={() => {
-                      setSettings(prev => ({ ...prev, daily_notification_time: time }));
-                      saveSettings('daily_notification_time', time);
-                    }}
-                  >
-                    <Text style={[
-                      styles.timeOptionText,
-                      settings.daily_notification_time === time && styles.timeOptionTextActive,
-                    ]}>
-                      {time}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <TouchableOpacity style={styles.timePickerBtn} onPress={() => openTimePicker('daily')}>
+                <Ionicons name="time-outline" size={18} color="#6366F1" />
+                <Text style={styles.timePickerBtnText}>{settings.daily_notification_time}</Text>
+                <Ionicons name="chevron-forward" size={16} color="#6B7280" />
+              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -263,58 +263,40 @@ export default function SettingsScreen() {
 
           {settings.weekly_notification_enabled && (
             <>
+              {/* Day selector — all 7 days visible, no scroll needed */}
               <View style={styles.daySelector}>
                 <Text style={styles.timeSelectorLabel}>Dzień tygodnia</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={styles.dayOptions}>
-                    {DAYS_OF_WEEK.map((day) => (
-                      <TouchableOpacity
-                        key={day.key}
-                        style={[
-                          styles.dayOption,
-                          settings.weekly_notification_day === day.key && styles.dayOptionActive,
-                        ]}
-                        onPress={() => {
-                          setSettings(prev => ({ ...prev, weekly_notification_day: day.key }));
-                          saveSettings('weekly_notification_day', day.key);
-                        }}
-                      >
-                        <Text style={[
-                          styles.dayOptionText,
-                          settings.weekly_notification_day === day.key && styles.dayOptionTextActive,
-                        ]}>
-                          {day.label.slice(0, 3)}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </ScrollView>
-              </View>
-
-              <View style={styles.timeSelector}>
-                <Text style={styles.timeSelectorLabel}>Godzina powiadomienia</Text>
-                <View style={styles.timeOptions}>
-                  {WEEKLY_TIME_OPTIONS.map((time) => (
+                <View style={styles.dayOptions}>
+                  {DAYS_OF_WEEK.map((day) => (
                     <TouchableOpacity
-                      key={time}
+                      key={day.key}
                       style={[
-                        styles.timeOption,
-                        settings.weekly_notification_time === time && styles.weeklyTimeOptionActive,
+                        styles.dayOption,
+                        settings.weekly_notification_day === day.key && styles.dayOptionActive,
                       ]}
                       onPress={() => {
-                        setSettings(prev => ({ ...prev, weekly_notification_time: time }));
-                        saveSettings('weekly_notification_time', time);
+                        setSettings(prev => ({ ...prev, weekly_notification_day: day.key }));
+                        saveSettings('weekly_notification_day', day.key);
                       }}
                     >
                       <Text style={[
-                        styles.timeOptionText,
-                        settings.weekly_notification_time === time && styles.timeOptionTextActive,
+                        styles.dayOptionText,
+                        settings.weekly_notification_day === day.key && styles.dayOptionTextActive,
                       ]}>
-                        {time}
+                        {day.label}
                       </Text>
                     </TouchableOpacity>
                   ))}
                 </View>
+              </View>
+
+              <View style={styles.timePickerRow}>
+                <Text style={styles.timeSelectorLabel}>Godzina powiadomienia</Text>
+                <TouchableOpacity style={[styles.timePickerBtn, styles.timePickerBtnGreen]} onPress={() => openTimePicker('weekly')}>
+                  <Ionicons name="time-outline" size={18} color="#22C55E" />
+                  <Text style={styles.timePickerBtnText}>{settings.weekly_notification_time}</Text>
+                  <Ionicons name="chevron-forward" size={16} color="#6B7280" />
+                </TouchableOpacity>
               </View>
             </>
           )}
@@ -362,6 +344,62 @@ export default function SettingsScreen() {
           <Text style={styles.logoutText}>Wyloguj się</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Time Picker Modal */}
+      <Modal visible={showTimePicker} transparent animationType="fade" onRequestClose={() => setShowTimePicker(false)}>
+        <TouchableOpacity style={styles.pickerOverlay} activeOpacity={1} onPress={() => setShowTimePicker(false)}>
+          <View style={styles.pickerPopup} onStartShouldSetResponder={() => true}>
+            <Text style={styles.pickerTitle}>
+              {pickerTarget === 'daily' ? 'Godzina dziennego powiadomienia' : 'Godzina tygodniowego powiadomienia'}
+            </Text>
+            <View style={styles.pickerColumns}>
+              {/* Hour column */}
+              <View style={styles.pickerColumn}>
+                <ScrollView style={styles.pickerScroll} showsVerticalScrollIndicator={false}>
+                  {Array.from({ length: 24 }, (_, i) => i).map(h => (
+                    <TouchableOpacity
+                      key={h}
+                      style={[styles.pickerCell, pickerHour === h && styles.pickerCellActive]}
+                      onPress={() => setPickerHour(h)}
+                    >
+                      <Text style={[styles.pickerCellText, pickerHour === h && styles.pickerCellTextActive]}>
+                        {h.toString().padStart(2, '0')}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                <Text style={styles.pickerColLabel}>godz.</Text>
+              </View>
+
+              <Text style={styles.pickerSep}>:</Text>
+
+              {/* Minute column (5-minute steps) */}
+              <View style={styles.pickerColumn}>
+                <ScrollView style={styles.pickerScroll} showsVerticalScrollIndicator={false}>
+                  {Array.from({ length: 12 }, (_, i) => i * 5).map(m => (
+                    <TouchableOpacity
+                      key={m}
+                      style={[styles.pickerCell, pickerMinute === m && styles.pickerCellActive]}
+                      onPress={() => setPickerMinute(m)}
+                    >
+                      <Text style={[styles.pickerCellText, pickerMinute === m && styles.pickerCellTextActive]}>
+                        {m.toString().padStart(2, '0')}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                <Text style={styles.pickerColLabel}>min.</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.pickerConfirm} onPress={confirmTime}>
+              <Text style={styles.pickerConfirmText}>
+                Potwierdź {pickerHour.toString().padStart(2, '0')}:{pickerMinute.toString().padStart(2, '0')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -437,7 +475,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#FFFFFF',
   },
-  timeSelector: {
+  timePickerRow: {
     marginTop: 16,
   },
   timeSelectorLabel: {
@@ -445,29 +483,21 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     marginBottom: 10,
   },
-  timeOptions: {
+  timePickerBtn: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  timeOption: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    alignItems: 'center',
     backgroundColor: '#374151',
+    borderRadius: 12,
+    padding: 14,
+    gap: 10,
   },
-  timeOptionActive: {
-    backgroundColor: '#6366F1',
+  timePickerBtnGreen: {
+    // inherits timePickerBtn, accent via icon color
   },
-  weeklyTimeOptionActive: {
-    backgroundColor: '#22C55E',
-  },
-  timeOptionText: {
-    fontSize: 14,
-    color: '#9CA3AF',
-  },
-  timeOptionTextActive: {
+  timePickerBtnText: {
+    flex: 1,
     color: '#FFFFFF',
+    fontSize: 17,
     fontWeight: '600',
   },
   daySelector: {
@@ -475,24 +505,27 @@ const styles = StyleSheet.create({
   },
   dayOptions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   dayOption: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: '#374151',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   dayOptionActive: {
     backgroundColor: '#22C55E',
   },
   dayOptionText: {
     fontSize: 13,
+    fontWeight: '600',
     color: '#9CA3AF',
   },
   dayOptionTextActive: {
     color: '#FFFFFF',
-    fontWeight: '600',
   },
   testButton: {
     flexDirection: 'row',
@@ -550,6 +583,83 @@ const styles = StyleSheet.create({
   },
   logoutText: {
     color: '#EF4444',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  // Time picker modal styles
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: '#00000088',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  pickerPopup: {
+    backgroundColor: '#1F2937',
+    borderRadius: 20,
+    padding: 20,
+    width: '100%',
+    maxWidth: 320,
+  },
+  pickerTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  pickerColumns: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
+  pickerColumn: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  pickerScroll: {
+    height: 180,
+  },
+  pickerCell: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  pickerCellActive: {
+    backgroundColor: '#6366F1',
+  },
+  pickerCellText: {
+    color: '#9CA3AF',
+    fontSize: 20,
+    fontWeight: '500',
+  },
+  pickerCellTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  pickerColLabel: {
+    color: '#6B7280',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  pickerSep: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginBottom: 24,
+  },
+  pickerConfirm: {
+    backgroundColor: '#6366F1',
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+  },
+  pickerConfirmText: {
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
   },
