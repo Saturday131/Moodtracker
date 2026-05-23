@@ -187,19 +187,19 @@ export default function AuthScreen() {
         <View style={styles.form}>
           <Text style={styles.formTitle}>Nowe hasło</Text>
           <Text style={styles.formSubtitle}>
-            Wprowadź kod z emaila i ustaw nowe hasło.
+            Wprowadź 6-cyfrowy kod z emaila i ustaw nowe hasło.
           </Text>
 
           <View style={styles.inputGroup}>
             <Ionicons name="key-outline" size={20} color="#6B7280" style={styles.inputIcon} />
             <TextInput
               style={styles.input}
-              placeholder="Kod z emaila"
+              placeholder="Kod 6-cyfrowy"
               placeholderTextColor="#6B7280"
               value={resetToken}
               onChangeText={setResetToken}
-              autoCapitalize="none"
-              autoCorrect={false}
+              keyboardType="number-pad"
+              maxLength={6}
             />
           </View>
 

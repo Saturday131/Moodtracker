@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import asyncio
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field
@@ -840,7 +841,8 @@ async def forgot_password(request: Request, input: ForgotPasswordRequest):
     if not user:
         return {"message": "Jeśli konto istnieje, wysłaliśmy link do resetowania hasła."}
 
-    token = secrets.token_urlsafe(32)
+    # 6-digit numeric code — easy to type manually
+    token = str(secrets.randbelow(900000) + 100000)
     expires_at = datetime.utcnow() + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)
     await db.password_reset_tokens.insert_one({
         "token": token,
@@ -850,7 +852,8 @@ async def forgot_password(request: Request, input: ForgotPasswordRequest):
         "used": False,
     })
 
-    send_reset_email(user["email"], token)
+    # Run blocking SMTP call in a thread so it doesn't block the async event loop
+    await asyncio.to_thread(send_reset_email, user["email"], token)
     return {"message": "Jeśli konto istnieje, wysłaliśmy link do resetowania hasła."}
 
 @api_router.post("/auth/reset-password")
