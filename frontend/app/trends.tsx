@@ -12,6 +12,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BarChart, LineChart } from 'react-native-gifted-charts';
 import { format, subDays } from 'date-fns';
 
+import { useAuth } from './auth-context';
+
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -62,6 +64,7 @@ function getScoreColor(score: number): string {
 }
 
 export default function TrendsScreen() {
+  const { authHeaders } = useAuth();
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [compare, setCompare] = useState<CompareData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -82,8 +85,8 @@ export default function TrendsScreen() {
       const days = getDays(timeRange);
 
       const [analyticsRes, compareRes] = await Promise.all([
-        fetch(`${API_URL}/api/analytics/summary?days=${days}`),
-        fetch(`${API_URL}/api/analytics/compare?current_days=${days}`),
+        fetch(`${API_URL}/api/analytics/summary?days=${days}`, { headers: authHeaders() }),
+        fetch(`${API_URL}/api/analytics/compare?current_days=${days}`, { headers: authHeaders() }),
       ]);
 
       if (analyticsRes.ok) {

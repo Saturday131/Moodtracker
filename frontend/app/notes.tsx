@@ -571,11 +571,11 @@ export default function NotesScreen() {
           resetCreateForm();
         }}
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          keyboardVerticalOffset={Platform.OS === 'android' ? 25 : 0}
-          style={styles.modalContainer}
-        >
+        <SafeAreaView style={styles.modalContainer}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1 }}
+          >
           <View style={styles.modalHeader}>
             <TouchableOpacity
               data-testid="create-modal-cancel"
@@ -887,7 +887,8 @@ export default function NotesScreen() {
               </>
             )}
           </ScrollView>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
       </Modal>
 
       {/* Date Picker Modal */}

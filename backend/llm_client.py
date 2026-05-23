@@ -10,7 +10,7 @@ class LlmChat:
     def __init__(self, api_key: str, session_id: str, system_message: str):
         self.api_key = api_key
         self.system_message = system_message
-        self._model = "gpt-4o"
+        self._model = "gpt-4o-mini"
 
     def with_model(self, provider: str, model: str) -> "LlmChat":
         self._model = model
