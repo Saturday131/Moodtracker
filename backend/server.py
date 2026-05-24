@@ -2258,7 +2258,7 @@ scheduler.add_job(job_task_reminders, IntervalTrigger(minutes=1), id="task_remin
 # Include router
 app.include_router(api_router)
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
     """Lightweight endpoint used by uptime monitors to keep the service warm."""
     return {"status": "ok"}
