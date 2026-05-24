@@ -238,6 +238,7 @@ class UserContext(BaseModel):
 
 class DailySummary(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str = ""
     date: str
     mood_summary: str
     mood_comparison: str
@@ -734,16 +735,17 @@ Pisz zwięźle (max 200 słów), ciepło i personalnie. Używaj emoji."""
     
     # Save summary to database
     summary_doc = DailySummary(
+        user_id=user_id,
         date=today_str,
         mood_summary=f"Średni nastrój: {today_composite:.1f}/5",
         mood_comparison=f"{'Lepiej' if today_composite > week_composite else 'Gorzej' if today_composite < week_composite else 'Tak samo'} niż w poprzednich dniach",
         notes_summary=f"{len(today_notes)} notatek dzisiaj",
         pending_tasks=pending_tasks[:5],
-        ai_insights=summary_data.get("ai_summary", "")
+        ai_insights=summary_data.get("ai_summary", "") or ""
     )
-    
+
     await db.daily_summaries.update_one(
-        {"date": today_str},
+        {"user_id": user_id, "date": today_str},
         {"$set": summary_doc.dict()},
         upsert=True
     )
@@ -2006,6 +2008,242 @@ Pisz ciepło, wspierająco i personalnie. Używaj emoji. Max 400 słów."""
             "ai_summary": None
         }
 
+
+@api_router.get("/summary/date/{date}")
+async def get_summary_for_date(date: str, current_user: dict = Depends(get_current_user)):
+    """Return mood entries and notes for a specific date (used by calendar day detail)"""
+    user_id = current_user["id"]
+    try:
+        date_obj = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD")
+
+    day_moods = await db.moods.find({"date": date, "user_id": user_id}).to_list(10)
+    day_moods = [m for m in day_moods if "time_of_day" in m and "layers" in m]
+
+    day_start = datetime.combine(date_obj, datetime.min.time())
+    day_end   = datetime.combine(date_obj, datetime.max.time())
+    day_notes = await db.notes.find({
+        "created_at": {"$gte": day_start, "$lte": day_end},
+        "user_id": user_id,
+        "category": {"$ne": "zadania"},
+    }).sort("created_at", 1).to_list(20)
+
+    TOD_ORDER  = {"morning": 0, "midday": 1, "evening": 2}
+    TIME_LABELS = {"morning": "Rano", "midday": "Południe", "evening": "Wieczór"}
+    day_moods.sort(key=lambda m: TOD_ORDER.get(m.get("time_of_day", ""), 99))
+
+    avg_score = 0.0
+    if day_moods:
+        avg_score = sum(calculate_composite_score(m["layers"]) for m in day_moods) / len(day_moods)
+
+    return {
+        "date": date,
+        "mood_today": {
+            "entries": len(day_moods),
+            "average_score": round(avg_score, 1),
+            "moods": [
+                {
+                    "time": m["time_of_day"],
+                    "time_label": TIME_LABELS.get(m["time_of_day"], m["time_of_day"]),
+                    "score": round(calculate_composite_score(m["layers"]), 1),
+                    "note": m.get("note") or "",
+                }
+                for m in day_moods
+            ],
+        },
+        "notes_today": [
+            {
+                "id": n.get("id", ""),
+                "title": n.get("title") or "",
+                "content": (n.get("text_content") or "")[:200],
+                "category": n.get("category", "przemyslenia"),
+                "time": n["created_at"].strftime("%H:%M") if isinstance(n.get("created_at"), datetime) else "",
+            }
+            for n in day_notes
+        ],
+    }
+
+
+@api_router.get("/reports/history")
+async def get_reports_history(
+    weeks: int = 16,
+    current_user: dict = Depends(get_current_user),
+):
+    """Return weekly analytics reports for the past N weeks — no AI, pure statistics"""
+    user_id = current_user["id"]
+    today = datetime.now(WARSAW).date()
+
+    # Build Mon–Sun week periods, newest first
+    days_since_monday = today.weekday()
+    current_monday = today - timedelta(days=days_since_monday)
+    week_periods = [
+        (current_monday - timedelta(weeks=i),
+         current_monday - timedelta(weeks=i) + timedelta(days=6))
+        for i in range(weeks)
+    ]
+
+    oldest_start = week_periods[-1][0].isoformat()
+    newest_end   = week_periods[0][1].isoformat()
+
+    # Bulk-fetch everything once
+    all_moods = await db.moods.find({
+        "user_id": user_id,
+        "date": {"$gte": oldest_start, "$lte": newest_end},
+    }).to_list(5000)
+    all_moods = [m for m in all_moods if "time_of_day" in m and "layers" in m]
+
+    range_start_dt = datetime.combine(week_periods[-1][0], datetime.min.time())
+    range_end_dt   = datetime.combine(week_periods[0][1],  datetime.max.time())
+
+    all_notes = await db.notes.find({
+        "user_id": user_id,
+        "created_at": {"$gte": range_start_dt, "$lte": range_end_dt},
+        "category": {"$ne": "zadania"},
+    }).to_list(2000)
+
+    all_tasks_done = await db.notes.find({
+        "user_id": user_id,
+        "category": "zadania",
+        "is_completed": True,
+        "created_at": {"$gte": range_start_dt, "$lte": range_end_dt},
+    }).to_list(1000)
+
+    PL_DAYS = ["Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota", "Niedziela"]
+    PL_MONTHS_SHORT = ["", "sty", "lut", "mar", "kwi", "maj", "cze",
+                       "lip", "sie", "wrz", "paź", "lis", "gru"]
+
+    def fmt(d):
+        return f"{d.day} {PL_MONTHS_SHORT[d.month]}"
+
+    reports = []
+    prev_avg: Optional[float] = None  # for week-over-week trend
+
+    # Process oldest → newest so each week can compare to the previous
+    for week_start, week_end in reversed(week_periods):
+        ws = week_start.isoformat()
+        we = week_end.isoformat()
+
+        week_moods = [m for m in all_moods if ws <= m["date"] <= we]
+
+        w_start_dt = datetime.combine(week_start, datetime.min.time())
+        w_end_dt   = datetime.combine(week_end,   datetime.max.time())
+
+        week_notes = [
+            n for n in all_notes
+            if isinstance(n.get("created_at"), datetime) and w_start_dt <= n["created_at"] <= w_end_dt
+        ]
+        week_tasks_done = [
+            t for t in all_tasks_done
+            if isinstance(t.get("created_at"), datetime) and w_start_dt <= t["created_at"] <= w_end_dt
+        ]
+
+        # Skip fully empty past weeks
+        if not week_moods and not week_notes and week_end < today:
+            continue
+
+        # Day-level scores
+        day_scores: dict = {}
+        for offset in range(7):
+            d_str = (week_start + timedelta(days=offset)).isoformat()
+            d_moods = [m for m in week_moods if m["date"] == d_str]
+            if d_moods:
+                day_scores[d_str] = (
+                    sum(calculate_composite_score(m["layers"]) for m in d_moods) / len(d_moods)
+                )
+
+        week_avg = 0.0
+        if week_moods:
+            week_avg = sum(calculate_composite_score(m["layers"]) for m in week_moods) / len(week_moods)
+
+        # Best / worst day
+        best_day = worst_day = None
+        if day_scores:
+            bd_str = max(day_scores, key=lambda k: day_scores[k])
+            wd_str = min(day_scores, key=lambda k: day_scores[k])
+            bd_obj = datetime.strptime(bd_str, "%Y-%m-%d").date()
+            wd_obj = datetime.strptime(wd_str, "%Y-%m-%d").date()
+            best_day  = {"date": bd_str, "label": PL_DAYS[bd_obj.weekday()], "score": round(day_scores[bd_str], 1)}
+            worst_day = {"date": wd_str, "label": PL_DAYS[wd_obj.weekday()], "score": round(day_scores[wd_str], 1)}
+
+        # Dimension averages
+        dim_sums = {"overall": 0.0, "energy": 0.0, "stress": 0.0, "productivity": 0.0, "social": 0.0}
+        for m in week_moods:
+            for k in dim_sums:
+                dim_sums[k] += m["layers"].get(k, 3)
+        n_m = len(week_moods)
+        dim_avgs = {k: round(v / n_m, 1) if n_m else 0.0 for k, v in dim_sums.items()}
+        best_dim  = max(dim_avgs, key=lambda k: dim_avgs[k]) if n_m else None
+        worst_dim = min(dim_avgs, key=lambda k: dim_avgs[k]) if n_m else None
+
+        # Best time of day
+        tod_scores: dict = {}
+        for m in week_moods:
+            t = m["time_of_day"]
+            tod_scores.setdefault(t, []).append(calculate_composite_score(m["layers"]))
+        best_tod = (
+            max(tod_scores, key=lambda t: sum(tod_scores[t]) / len(tod_scores[t]))
+            if tod_scores else None
+        )
+
+        # Mood variance (std dev — measures day-to-day consistency)
+        scores_list = [calculate_composite_score(m["layers"]) for m in week_moods]
+        variance = 0.0
+        if len(scores_list) > 1:
+            mean = sum(scores_list) / len(scores_list)
+            variance = (sum((s - mean) ** 2 for s in scores_list) / len(scores_list)) ** 0.5
+
+        days_with_entries = len(day_scores)
+        consistency_pct   = round(days_with_entries / 7 * 100)
+
+        # Trend vs previous week
+        vs_previous = None
+        if prev_avg is not None and week_moods:
+            change = round(week_avg - prev_avg, 1)
+            trend = "up" if change > 0.1 else ("down" if change < -0.1 else "stable")
+            vs_previous = {"change": change, "trend": trend}
+
+        # Achievement badge
+        badge = None
+        if week_moods:
+            if week_avg >= 4.2:
+                badge = "excellent"
+            elif vs_previous and vs_previous["trend"] == "up" and vs_previous["change"] >= 0.3:
+                badge = "improving"
+            elif consistency_pct == 100:
+                badge = "consistent"
+            elif week_avg >= 3.5:
+                badge = "good"
+
+        reports.append({
+            "week_start":        ws,
+            "week_end":          we,
+            "label":             f"{fmt(week_start)}–{fmt(week_end)}",
+            "is_current_week":   week_start <= today <= week_end,
+            "avg_mood":          round(week_avg, 1),
+            "entry_count":       len(week_moods),
+            "days_with_entries": days_with_entries,
+            "consistency_pct":   consistency_pct,
+            "best_day":          best_day,
+            "worst_day":         worst_day,
+            "notes_count":       len(week_notes),
+            "tasks_completed":   len(week_tasks_done),
+            "dimension_avgs":    dim_avgs,
+            "best_dimension":    best_dim,
+            "worst_dimension":   worst_dim,
+            "best_time_of_day":  best_tod,
+            "mood_variance":     round(variance, 2),
+            "vs_previous":       vs_previous,
+            "badge":             badge,
+        })
+
+        if week_moods:
+            prev_avg = week_avg
+
+    reports.reverse()  # newest first
+    return {"reports": reports}
+
+
 # User Settings endpoints
 @api_router.get("/settings")
 async def get_settings(current_user: dict = Depends(get_current_user)):
@@ -2165,9 +2403,19 @@ async def job_daily_reminders():
         tokens = [d["token"] for d in tokens_docs]
         if tokens:
             if existing:
-                await send_expo_push(tokens, "Podsumowanie dnia", "Sprawdź swoje dzisiejsze podsumowanie nastroju.")
+                await send_expo_push(
+                    tokens,
+                    "Podsumowanie dnia",
+                    "Sprawdź swoje dzisiejsze podsumowanie nastroju.",
+                    {"screen": "summary"},
+                )
             else:
-                await send_expo_push(tokens, "Jak się dziś czujesz?", "Nie zapomnij zapisać swojego nastroju!")
+                await send_expo_push(
+                    tokens,
+                    "Jak się dziś czujesz?",
+                    "Nie zapomnij zapisać swojego nastroju!",
+                    {"screen": "index"},
+                )
 
 async def job_weekly_summaries():
     """Check which users should receive weekly summary now"""
