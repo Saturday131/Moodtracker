@@ -9,6 +9,9 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import asyncio
 import logging
+from zoneinfo import ZoneInfo
+
+WARSAW = ZoneInfo("Europe/Warsaw")
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
@@ -2143,7 +2146,7 @@ async def test_push_notification(current_user: dict = Depends(get_current_user))
 
 async def job_daily_reminders():
     """Check which users should receive daily mood reminder now"""
-    now = datetime.utcnow()
+    now = datetime.now(WARSAW)
     current_time = now.strftime("%H:%M")
     
     # Find users with daily notifications enabled and matching time
@@ -2168,7 +2171,7 @@ async def job_daily_reminders():
 
 async def job_weekly_summaries():
     """Check which users should receive weekly summary now"""
-    now = datetime.utcnow()
+    now = datetime.now(WARSAW)
     current_time = now.strftime("%H:%M")
     current_weekday = now.weekday()  # 0=Mon, 6=Sun
     
@@ -2193,18 +2196,19 @@ async def job_weekly_summaries():
 
 async def job_task_reminders():
     """Check for tasks due in the current minute and notify"""
-    now = datetime.utcnow()
+    now = datetime.now(WARSAW)
     current_time = now.strftime("%H:%M")
-    today = now.date().isoformat()
+    today_iso = now.strftime("%Y-%m-%d")    # for end_date comparison (ISO format)
+    today_dmy = now.strftime("%d-%m-%Y")    # matches frontend date storage format
     current_weekday = now.weekday()
-    
+
     # Find tasks scheduled for now
     tasks = await db.notes.find({
         "category": "zadania",
         "scheduled_time": current_time,
         "is_completed": {"$ne": True},
         "$or": [
-            {"scheduled_date": today},
+            {"scheduled_date": today_dmy},
             {"is_recurring": True},
         ],
     }).to_list(200)
@@ -2234,9 +2238,9 @@ async def job_task_reminders():
                 created = task.get("created_at")
                 if created and hasattr(created, "weekday") and created.weekday() != current_weekday:
                     continue
-            # Check end date
+            # Check end date (stored in ISO format YYYY-MM-DD)
             end_date = task.get("recurrence_end_date")
-            if end_date and today > end_date:
+            if end_date and today_iso > end_date:
                 continue
         
         tokens_docs = await db.push_tokens.find({"user_id": user_id}).to_list(10)
