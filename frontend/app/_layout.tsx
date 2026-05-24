@@ -203,16 +203,7 @@ function AppContent() {
             ),
           }}
         />
-        <Tabs.Screen
-          name="chat"
-          options={{
-            title: 'Czat',
-            headerTitle: 'Asystent Nastroju',
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="chatbubbles" size={size} color={color} />
-            ),
-          }}
-        />
+        <Tabs.Screen name="chat" options={{ href: null }} />
         <Tabs.Screen name="export" options={{ href: null }} />
         <Tabs.Screen name="settings" options={{ href: null }} />
         <Tabs.Screen name="auth-screen" options={{ href: null }} />

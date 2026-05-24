@@ -475,6 +475,9 @@ export default function TrendsScreen() {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView showsVerticalScrollIndicator={false}>
         {renderTimeRangeSelector()}
+        <Text style={styles.periodLabel}>
+          Ostatnie {getDays(timeRange)} dni · {analytics?.total_entries ?? 0} wpisów
+        </Text>
         {renderViewModeSelector()}
 
         {analytics?.total_entries === 0 ? (
@@ -510,6 +513,12 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     marginTop: 10,
     fontSize: 16,
+  },
+  periodLabel: {
+    color: '#6B7280',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 6,
   },
   timeRangeContainer: {
     flexDirection: 'row',

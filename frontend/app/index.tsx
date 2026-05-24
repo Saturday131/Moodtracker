@@ -252,45 +252,82 @@ export default function TodayScreen() {
                   <Ionicons name="close" size={20} color="#9CA3AF" />
                 </TouchableOpacity>
               </View>
-              
-              {dailySummary.ai_summary ? (
-                <Text style={styles.summaryText}>{dailySummary.ai_summary}</Text>
-              ) : (
-                <View style={styles.summaryStats}>
-                  <View style={styles.summaryStatRow}>
-                    <Text style={styles.summaryStatLabel}>Wpisy nastroju:</Text>
-                    <Text style={styles.summaryStatValue}>{dailySummary.mood_today.entries}</Text>
-                  </View>
-                  <View style={styles.summaryStatRow}>
-                    <Text style={styles.summaryStatLabel}>Średni wynik:</Text>
-                    <Text style={[styles.summaryStatValue, { color: SCORE_COLORS[Math.round(dailySummary.mood_today.average_score) - 1] || '#9CA3AF' }]}>
-                      {dailySummary.mood_today.average_score.toFixed(1)}/5
+
+              {/* Mood Score */}
+              {dailySummary.mood_today.entries > 0 ? (
+                <>
+                  <View style={styles.summaryScoreRow}>
+                    <Text style={styles.summaryScoreEmoji}>
+                      {dailySummary.mood_today.average_score >= 4.5 ? '😄' :
+                       dailySummary.mood_today.average_score >= 3.5 ? '🙂' :
+                       dailySummary.mood_today.average_score >= 2.5 ? '😐' :
+                       dailySummary.mood_today.average_score >= 1.5 ? '😔' : '😞'}
                     </Text>
-                  </View>
-                  <View style={styles.summaryStatRow}>
-                    <Text style={styles.summaryStatLabel}>Trend:</Text>
-                    <Text style={[styles.summaryStatValue, { 
-                      color: dailySummary.mood_comparison.trend === 'up' ? '#22C55E' : 
-                             dailySummary.mood_comparison.trend === 'down' ? '#EF4444' : '#9CA3AF' 
+                    <View>
+                      <Text style={[styles.summaryScoreValue, {
+                        color: SCORE_COLORS[Math.min(Math.max(Math.round(dailySummary.mood_today.average_score) - 1, 0), 4)]
+                      }]}>
+                        {dailySummary.mood_today.average_score.toFixed(1)}<Text style={styles.summaryScoreMax}>/5</Text>
+                      </Text>
+                      <Text style={styles.summaryScoreLabel}>
+                        {dailySummary.mood_today.entries} {dailySummary.mood_today.entries === 1 ? 'wpis' : 'wpisy'}
+                      </Text>
+                    </View>
+                    <View style={[styles.summaryTrendBadge, {
+                      backgroundColor: dailySummary.mood_comparison.trend === 'up' ? '#22C55E20' :
+                                       dailySummary.mood_comparison.trend === 'down' ? '#EF444420' : '#6B728020'
                     }]}>
-                      {dailySummary.mood_comparison.trend === 'up' ? '↑ Lepiej' : 
-                       dailySummary.mood_comparison.trend === 'down' ? '↓ Gorzej' : '→ Stabilnie'}
-                    </Text>
+                      <Text style={[styles.summaryTrendText, {
+                        color: dailySummary.mood_comparison.trend === 'up' ? '#22C55E' :
+                               dailySummary.mood_comparison.trend === 'down' ? '#EF4444' : '#9CA3AF'
+                      }]}>
+                        {dailySummary.mood_comparison.trend === 'up' ? '↑ Lepiej niż zwykle' :
+                         dailySummary.mood_comparison.trend === 'down' ? '↓ Poniżej średniej' : '→ Zgodnie ze średnią'}
+                      </Text>
+                    </View>
                   </View>
-                  {dailySummary.notes_today.length > 0 && (
-                    <View style={styles.summaryStatRow}>
-                      <Text style={styles.summaryStatLabel}>Notatki:</Text>
-                      <Text style={styles.summaryStatValue}>{dailySummary.notes_today.length}</Text>
-                    </View>
+
+                  {/* Simple insight */}
+                  <Text style={styles.summaryInsight}>
+                    {dailySummary.mood_today.average_score >= 4.5
+                      ? '🌟 Świetny dzień! Twój nastrój jest wyjątkowo dobry.'
+                      : dailySummary.mood_today.average_score >= 3.5
+                      ? '👍 Dobry dzień. Nastrój powyżej przeciętnej.'
+                      : dailySummary.mood_today.average_score >= 2.5
+                      ? '💪 Przeciętny dzień. Zadbaj dziś o siebie.'
+                      : dailySummary.mood_today.average_score >= 1.5
+                      ? '🤗 Trudny dzień. Pamiętaj, że każdy taki dzień mija.'
+                      : '❤️ Ciężki dzień. Nie jesteś sam/a w tym.'}
+                  </Text>
+                </>
+              ) : (
+                <Text style={styles.summaryInsight}>Nie zapisałeś/aś jeszcze nastroju dzisiaj.</Text>
+              )}
+
+              {/* Notes */}
+              {dailySummary.notes_today.length > 0 && (
+                <View style={styles.summarySectionBlock}>
+                  <Text style={styles.summarySectionTitle}>📝 Notatki z dzisiaj</Text>
+                  {dailySummary.notes_today.slice(0, 3).map((note, i) => (
+                    <Text key={i} style={styles.summaryListItem}>
+                      • {note.title || note.content?.slice(0, 60) || 'Notatka'}
+                    </Text>
+                  ))}
+                  {dailySummary.notes_today.length > 3 && (
+                    <Text style={styles.summaryMoreText}>+{dailySummary.notes_today.length - 3} więcej</Text>
                   )}
-                  {dailySummary.pending_tasks.length > 0 && (
-                    <View style={styles.tasksSection}>
-                      <Text style={styles.tasksTitle}>✅ Zadania do wykonania:</Text>
-                      {dailySummary.pending_tasks.slice(0, 3).map((task, i) => (
-                        <Text key={i} style={styles.taskItem}>• {task.task || 'Zadanie'}</Text>
-                      ))}
-                    </View>
-                  )}
+                </View>
+              )}
+
+              {/* Pending tasks */}
+              {dailySummary.pending_tasks.length > 0 && (
+                <View style={styles.summarySectionBlock}>
+                  <Text style={styles.summarySectionTitle}>✅ Zadania do zrobienia</Text>
+                  {dailySummary.pending_tasks.slice(0, 3).map((task, i) => (
+                    <Text key={i} style={styles.summaryListItem}>
+                      • {task.task || 'Zadanie'}
+                    </Text>
+                  ))}
                 </View>
               )}
             </View>
@@ -518,39 +555,69 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
   },
-  summaryStats: {
-    gap: 8,
-  },
-  summaryStatRow: {
+  summaryScoreRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  summaryScoreEmoji: {
+    fontSize: 40,
+  },
+  summaryScoreValue: {
+    fontSize: 28,
+    fontWeight: 'bold',
+  },
+  summaryScoreMax: {
+    fontSize: 16,
+    color: '#9CA3AF',
+    fontWeight: 'normal',
+  },
+  summaryScoreLabel: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  summaryTrendBadge: {
+    flex: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     alignItems: 'center',
   },
-  summaryStatLabel: {
-    color: '#9CA3AF',
-    fontSize: 14,
-  },
-  summaryStatValue: {
-    color: '#FFFFFF',
-    fontSize: 14,
+  summaryTrendText: {
+    fontSize: 12,
     fontWeight: '600',
+    textAlign: 'center',
   },
-  tasksSection: {
-    marginTop: 12,
-    paddingTop: 12,
+  summaryInsight: {
+    color: '#D1D5DB',
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  summarySectionBlock: {
+    marginTop: 10,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: '#374151',
   },
-  tasksTitle: {
+  summarySectionTitle: {
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: 6,
   },
-  taskItem: {
+  summaryListItem: {
     color: '#D1D5DB',
     fontSize: 13,
     marginBottom: 4,
+    lineHeight: 18,
+  },
+  summaryMoreText: {
+    color: '#6B7280',
+    fontSize: 12,
+    marginTop: 2,
   },
   timeSelector: {
     flexDirection: 'row',
