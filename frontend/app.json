@@ -17,7 +17,8 @@
         "backgroundColor": "#000"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.fermentaf.fermenttracker"
+      "package": "com.fermentaf.fermenttracker",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "bundler": "metro",

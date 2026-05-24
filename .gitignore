@@ -80,7 +80,9 @@ agenthub/agents/youtube/db
 .cache/
 
 # Mobile development
-android-sdk/ -e 
+android-sdk/
+google-services.json
+
 # Environment files (real secrets — never commit)
 *.env
 *.env.*
