@@ -18,7 +18,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.fermentaf.fermenttracker",
-      "googleServicesFile": "$GOOGLE_SERVICES_JSON"
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "bundler": "metro",

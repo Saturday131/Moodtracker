@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "450366547316",
+    "project_id": "ferment-tracker",
+    "storage_bucket": "ferment-tracker.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:450366547316:android:e86a9d756cebf17b95f821",
+        "android_client_info": {
+          "package_name": "com.fermentaf.fermenttracker"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCusaZkFSrl-YUoGv60TrfmlZ0Bveircug"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
